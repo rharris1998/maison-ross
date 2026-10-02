@@ -38,6 +38,9 @@ const DEFAULTS = Object.freeze({
   ],
   todo: 'todo.shopping_list',
   bins: 'calendar.waste_collection_schedule_london_borough_of_bexley',
+  calendar: 'calendar.evie_ross',
+  // Events left off the calendar card (bins have their own row).
+  calendar_hide: '^bin day',
   backup: 'sensor.backup_last_successful_automatic_backup',
   remote: 'binary_sensor.remote_ui',
   phone_battery: 'sensor.rosss_iphone_battery_level',
@@ -93,6 +96,7 @@ const ICONS = {
   gauge: '<path d="m12 14 4-4"/><path d="M3.34 19a10 10 0 1 1 17.32 0"/>',
   umbrella: '<path d="M22 12a10.06 10.06 1 0 0-20 0Z"/><path d="M12 12v8a2 2 0 0 0 4 0M12 2v1"/>',
   bin: '<path d="M3 6h18M8 6V4h8v2"/><path d="M5 6l1.2 14a2 2 0 0 0 2 2h7.6a2 2 0 0 0 2-2L19 6M10 11v6M14 11v6"/>',
+  calendar: '<rect x="3" y="4" width="18" height="18" rx="3"/><path d="M16 2v4M8 2v4M3 10h18"/>',
   bell: '<path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/>',
 };
 const icon = (name, cls = '') => `<svg class="ic ${cls}" viewBox="0 0 24 24" aria-hidden="true">${ICONS[name] || ICONS.home}</svg>`;
@@ -382,6 +386,13 @@ header{position:relative;display:flex;align-items:center;gap:14px;margin-bottom:
 .big-ring .ring .num{font-size:48px}
 
 /* Rain, air chart, hours, door */
+.agenda .evday{font-size:12px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--dim);margin:14px 0 2px}
+.agenda .evday:first-child{margin-top:0}
+.ev{display:flex;align-items:center;gap:14px;min-height:52px;padding:6px 12px;border-radius:16px;background:var(--tile);border:1px solid var(--tile-line);margin-top:6px}
+.ev .when{flex:none;width:96px;font-size:14px}
+.ev .txt{flex:1;min-width:0}.ev .name{font-size:15px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.ev .st{font-size:13px;color:var(--dim)}
+.ev.now{border-color:color-mix(in srgb,var(--accent) 55%,transparent);background:color-mix(in srgb,var(--accent) 12%,var(--tile))}
+.ev.now .when{color:var(--accent)}
 .pill.bins{color:var(--ev);background:color-mix(in srgb,var(--ev) 14%,var(--card));border-color:color-mix(in srgb,var(--ev) 35%,transparent)}
 .bindots{display:inline-flex;gap:4px;flex:none}
 .bindot{width:14px;height:14px;border-radius:50%;background:var(--c);box-shadow:inset 0 0 0 1px rgba(100,116,139,.45)}
@@ -422,7 +433,8 @@ class RossHome extends HTMLElement {
     this._lastDoor = undefined; // the doorbell's last activity seen
     this._touched = 0;         // last tap, so a self-update never reloads mid-use
     this._todo = [];
-    this._bins = null;         // {at, days: [{date, items}]}
+    this._bins = null;
+    this._events = null;       // {at, list: [{start, end, allDay, summary, location}]}         // {at, days: [{date, items}]}
     this._sig = '';
     this._themePref = (() => { try { return localStorage.getItem('ross-home-theme') || 'auto'; } catch { return 'auto'; } })();
   }
@@ -548,6 +560,48 @@ class RossHome extends HTMLElement {
       this._render();
     } catch { this._bins = {at: Date.now(), days: []}; } finally { this._binsLoading = false; }
   }
+  // The shared calendar's next two weeks, fetched every ten minutes.
+  async _loadEvents() {
+    const id = this._config?.calendar;
+    if (!id || !this._s(id) || (this._events && Date.now() - this._events.at < 600000) || this._eventsLoading) return;
+    this._eventsLoading = true;
+    try {
+      const start = new Date(); start.setHours(0, 0, 0, 0);
+      const end = new Date(start.getTime() + 15 * 86400e3);
+      const res = await this._hass.callApi('GET', `calendars/${id}?start=${encodeURIComponent(start.toISOString())}&end=${encodeURIComponent(end.toISOString())}`);
+      let hide = null;
+      try { hide = this._config.calendar_hide ? new RegExp(this._config.calendar_hide, 'i') : null; } catch { hide = null; }
+      const list = (res || []).filter((e) => !(hide && hide.test(e.summary || ''))).map((e) => {
+        const allDay = !!e.start?.date;
+        return {allDay, start: allDay ? localDay(e.start.date) : new Date(e.start.dateTime), end: allDay ? localDay(e.end.date) : new Date(e.end?.dateTime || e.start.dateTime), summary: (e.summary || 'Busy').trim(), location: e.location || ''};
+      }).sort((a, b) => a.start - b.start || b.allDay - a.allDay);
+      this._events = {at: Date.now(), list};
+      this._sig = '';
+      this._render();
+    } catch { this._events = {at: Date.now(), list: []}; } finally { this._eventsLoading = false; }
+  }
+  // Events not yet over, each with the day it shows under.
+  _upcoming() {
+    const now = new Date(), today = new Date(); today.setHours(0, 0, 0, 0);
+    const out = [];
+    for (const e of this._events?.list || []) {
+      if (e.end <= now) continue;
+      const first = e.start < today ? today : e.start;
+      const day = new Date(first); day.setHours(0, 0, 0, 0);
+      out.push({...e, day, away: Math.round((day - today) / 86400e3)});
+    }
+    return out;
+  }
+  _eventRows(list) {
+    let last = null;
+    return list.map((e) => {
+      const head = e.away !== last ? `<div class="evday">${e.away === 0 ? 'Today' : e.away === 1 ? 'Tomorrow' : esc(e.day.toLocaleDateString('en-GB', {weekday: 'long', day: 'numeric', month: 'short'}))}</div>` : '';
+      last = e.away;
+      const now = !e.allDay && e.start <= new Date();
+      const when = e.allDay ? 'All day' : `${hhmm(e.start)}<span class="dim">–${hhmm(e.end)}</span>`;
+      return `${head}<div class="ev ${now ? 'now' : ''}"><span class="when num">${when}</span><span class="txt"><div class="name">${esc(e.summary)}</div>${e.location ? `<div class="st">${esc(e.location.split('\n')[0])}</div>` : now ? '<div class="st">On now</div>' : ''}</span></div>`;
+    }).join('');
+  }
   // The next collection still to come: today's counts until noon.
   _nextBins() {
     const today = new Date(); today.setHours(0, 0, 0, 0);
@@ -622,12 +676,13 @@ class RossHome extends HTMLElement {
       const d = s.entity_id.split('.')[0];
       if (d === 'light' || d === 'person' || d === 'update' || d === 'media_player' || d === 'climate') sig += `|${s.entity_id}:${s.state}:${s.attributes?.brightness ?? ''}`;
     }
-    return sig + `|${Object.keys(h.areas || {}).length}|${this._rain()?.text}|${this._history?.at}|${this._bins?.at}`;
+    return sig + `|${Object.keys(h.areas || {}).length}|${this._rain()?.text}|${this._history?.at}|${this._bins?.at}|${this._events?.at}`;
   }
   _render(force = false) {
     if (!this._hass || !this._config || !this.shadowRoot.querySelector('.root')) return;
     this._loadTodo();
     this._loadBins();
+    this._loadEvents();
     this._watchDoor();
     const now = Date.now(), sig = this._signature(now);
     if (!force && sig === this._sig) return;
@@ -638,7 +693,7 @@ class RossHome extends HTMLElement {
     this._mood(root);
     const alerts = this._alerts();
     root.querySelector('.main').innerHTML = this._header(alerts) +
-      `<div class="grid"><div class="col c1">${this._airCard()}${this._weatherCard()}</div>` +
+      `<div class="grid"><div class="col c1">${this._airCard()}${this._weatherCard()}${this._calendarCard()}</div>` +
       `<div class="col c2">${this._actionsCard()}${this._roomsCard()}</div>` +
       `<div class="col c3">${this._doorCard()}${this._camerasCard()}${this._todoCard()}</div></div>`;
     this._renderSheet(alerts);
@@ -728,6 +783,16 @@ class RossHome extends HTMLElement {
     return this._card('Bedroom air', a.on ? `${a.mode} · running` : a.mode, body, 'data-act="sheet" data-kind="purifier"');
   }
 
+  _calendarCard() {
+    const s = this._s(this._config.calendar);
+    if (!s) return '';
+    const all = this._upcoming(), soon = all.filter((e) => e.away <= 6).slice(0, 3);
+    const body = !this._events ? '<div class="empty dim">Loading…</div>'
+      : soon.length ? `<div class="agenda">${this._eventRows(soon)}</div>`
+        : `<div class="empty">${icon('calendar')}<span>Nothing planned this week.</span></div>`;
+    const today = all.filter((e) => e.away === 0).length;
+    return this._card(esc(s.attributes.friendly_name || 'Calendar'), today ? `${today} today` : 'Nothing today', body, 'data-act="sheet" data-kind="agenda"');
+  }
   _weatherCard() {
     const w = this._s(this._config.weather);
     if (!w) return '';
@@ -865,7 +930,7 @@ class RossHome extends HTMLElement {
       this._mountStream(host.querySelector('.stream'));
       return;
     }
-    const html = kind === 'purifier' ? this._purifierSheet() : kind === 'cameras' ? this._camerasSheet() : kind === 'weather' ? this._weatherSheet() : kind === 'bins' ? this._binsSheet() : this._statusSheet(alerts);
+    const html = kind === 'purifier' ? this._purifierSheet() : kind === 'cameras' ? this._camerasSheet() : kind === 'weather' ? this._weatherSheet() : kind === 'bins' ? this._binsSheet() : kind === 'agenda' ? this._agendaSheet() : this._statusSheet(alerts);
     if (existing && existing.dataset.kind === kind) { existing.innerHTML = html; return; }
     host.innerHTML = `<div class="layer" data-act="close"><div class="sheet" role="dialog" aria-modal="true" data-kind="${kind}">${html}</div></div>`;
   }
@@ -942,6 +1007,11 @@ class RossHome extends HTMLElement {
     return this._sheetHead('cloud', 'home', 'Weather', r ? 'blue' : '', `<b>${temp === null ? '—' : Math.round(temp)}° · ${esc(WEATHER_WORDS[w?.state] || pretty(w?.state))}</b><span class="dim">· ${r ? r.text : 'No rain in the next 12 hours'}</span>`) +
       `<div class="panel"><h3>Next 12 hours</h3><div class="hint">Chance of rain under each hour; wet hours are tinted.</div><div class="hours">${hours || '<div class="dim">Hourly forecast loading…</div>'}</div></div>
        <div class="panel" style="margin-top:14px"><h3>This week</h3><div class="days week">${days}</div></div>`;
+  }
+  _agendaSheet() {
+    const s = this._s(this._config.calendar), all = this._upcoming(), today = all.filter((e) => e.away === 0).length;
+    return this._sheetHead('calendar', 'accent', esc(s?.attributes.friendly_name || 'Calendar'), '', `<b>${today ? `${today} today` : 'Nothing today'}</b><span class="dim">· next two weeks</span>`) +
+      `<div class="panel agenda">${all.length ? this._eventRows(all.slice(0, 30)) : '<div class="dim">Nothing in the next two weeks.</div>'}</div>`;
   }
   _binsSheet() {
     const days = this._nextBins().slice(0, 4), next = days[0];

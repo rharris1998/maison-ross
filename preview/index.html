@@ -33,6 +33,7 @@ add('sensor.front_door_battery', 'unknown', {device_class: 'battery', unit_of_me
 add('light.garden_light', 'off', {friendly_name: 'Garden Light'});
 add('switch.garden_motion_detection', 'off');
 add('calendar.waste_collection_schedule_london_borough_of_bexley', 'off');
+add('calendar.evie_ross', 'off', {friendly_name: 'Evie + Ross'});
 add('todo.shopping_list', q.get('todo') ? '2' : '0', {friendly_name: 'Shopping list'});
 add('sensor.backup_last_successful_automatic_backup', iso(17 * 60));
 add('binary_sensor.remote_ui', 'on');
@@ -67,6 +68,10 @@ hass = {states: {...S}, areas, entities, devices: {}, user: {name: 'Ross Harriso
     const ymd = (n) => { const d = new Date(now + n * 86400e3); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; };
     const first = Number(q.get('bins') ?? 6);
     const ev = (n, summary) => ({start: {date: ymd(n)}, end: {date: ymd(n + 1)}, summary});
+    const at = (n, h, m = 0) => { const d = new Date(now + n * 86400e3); d.setHours(h, m, 0, 0); return d.toISOString(); };
+    if (path.startsWith('calendars/calendar.evie_ross')) return [ev(6, 'Bin Day - Food '), {start: {dateTime: at(0, 23, 0)}, end: {dateTime: at(0, 23, 59)}, summary: 'Late film'},
+      {start: {dateTime: at(1, 11)}, end: {dateTime: at(1, 13)}, summary: 'Padel with Sam', location: 'Padel Social Club, Greenwich\nLondon'}, ev(2, 'Evie\'s mum visiting'),
+      {start: {dateTime: at(3, 18, 30)}, end: {dateTime: at(3, 19, 30)}, summary: 'Chest & Triceps'}, {start: {dateTime: at(4, 18, 30)}, end: {dateTime: at(4, 19, 30)}, summary: 'Hips & Glutes'}];
     if (path.startsWith('calendars/')) return [ev(first, 'Brown Wheelie (Garden waste)'), ev(first, 'Brown Caddy (Food waste)'), ev(first, 'White Lidded Wheelie (Plastics, cans and glass)'),
       ev(first + 7, 'Brown Caddy (Food waste)'), ev(first + 7, 'Blue Lidded Wheelie (Paper and card)'), ev(first + 7, 'Green Wheelie (Non-recyclable waste)')];
     return [];
