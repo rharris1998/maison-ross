@@ -37,12 +37,23 @@ const DEFAULTS = Object.freeze({
     {name: 'Dining room', camera: 'camera.dining_room_live_view', activity: 'sensor.dining_room_last_activity', battery: 'sensor.dining_room_battery'},
   ],
   todo: 'todo.shopping_list',
+  bins: 'calendar.waste_collection_schedule_london_borough_of_bexley',
   backup: 'sensor.backup_last_successful_automatic_backup',
   remote: 'binary_sensor.remote_ui',
   phone_battery: 'sensor.rosss_iphone_battery_level',
   // Lights that are outdoor or security lights and stay out of Rooms' count.
   exclude_lights: ['light.garden_light'],
 });
+
+// Bins: the council names each one "Brown Caddy (Food waste)".
+const BIN_COLOURS = [[/brown/i, '#a8743f'], [/white/i, '#e8edf3'], [/blue/i, '#38bdf8'], [/green/i, '#34d399'], [/black|grey|gray/i, '#64748b'], [/purple/i, '#8d7bff'], [/red/i, '#ff5d7a']];
+const binInfo = (summary = '') => {
+  const m = summary.match(/^(.*?)\s*\((.*)\)\s*$/);
+  return {bin: m ? m[1] : summary, short: m ? m[2] : summary, colour: (BIN_COLOURS.find(([re]) => re.test(summary)) || [, '#94a3b8'])[1]};
+};
+const localDay = (s) => { const [y, m, d] = s.split('-').map(Number); return new Date(y, m - 1, d); };
+const binDots = (items) => `<span class="bindots">${items.map((b) => `<span class="bindot" style="--c:${b.colour}" title="${esc(b.bin)}"></span>`).join('')}</span>`;
+const binWhen = (d) => (d.away === 0 ? 'today' : d.away === 1 ? 'tomorrow' : d.away < 7 ? localDay(d.date).toLocaleDateString('en-GB', {weekday: 'long'}) : `in ${d.away} days`);
 
 // ---- Line icons: 24 px grid, 2 px stroke, round caps ----------------------
 const ICONS = {
@@ -81,6 +92,7 @@ const ICONS = {
   plus: '<path d="M12 5v14M5 12h14"/>',
   gauge: '<path d="m12 14 4-4"/><path d="M3.34 19a10 10 0 1 1 17.32 0"/>',
   umbrella: '<path d="M22 12a10.06 10.06 1 0 0-20 0Z"/><path d="M12 12v8a2 2 0 0 0 4 0M12 2v1"/>',
+  bin: '<path d="M3 6h18M8 6V4h8v2"/><path d="M5 6l1.2 14a2 2 0 0 0 2 2h7.6a2 2 0 0 0 2-2L19 6M10 11v6M14 11v6"/>',
   bell: '<path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/>',
 };
 const icon = (name, cls = '') => `<svg class="ic ${cls}" viewBox="0 0 24 24" aria-hidden="true">${ICONS[name] || ICONS.home}</svg>`;
@@ -370,6 +382,14 @@ header{position:relative;display:flex;align-items:center;gap:14px;margin-bottom:
 .big-ring .ring .num{font-size:48px}
 
 /* Rain, air chart, hours, door */
+.pill.bins{color:var(--ev);background:color-mix(in srgb,var(--ev) 14%,var(--card));border-color:color-mix(in srgb,var(--ev) 35%,transparent)}
+.bindots{display:inline-flex;gap:4px;flex:none}
+.bindot{width:14px;height:14px;border-radius:50%;background:var(--c);box-shadow:inset 0 0 0 1px rgba(100,116,139,.45)}
+.bindot.big{width:28px;height:28px;flex:none}
+.binrow{width:100%;text-align:left;color:inherit;font:inherit;cursor:pointer}
+.binrow svg{width:20px;height:20px;color:var(--dim)}
+.binday{margin-top:14px}.binday h3 .dim{font-weight:500}
+.bin{display:flex;align-items:center;gap:12px;margin-top:10px}.bin .name{font-weight:700}.bin .st{font-size:13px;color:var(--dim)}
 .pill.rain{color:var(--home);background:color-mix(in srgb,var(--home) 14%,var(--card));border-color:color-mix(in srgb,var(--home) 35%,transparent)}
 .chart{display:block;width:100%;height:110px;margin-top:8px;overflow:visible}
 .chart .line{fill:none;stroke:var(--home);stroke-width:2;vector-effect:non-scaling-stroke;stroke-linejoin:round}
@@ -402,6 +422,7 @@ class RossHome extends HTMLElement {
     this._lastDoor = undefined; // the doorbell's last activity seen
     this._touched = 0;         // last tap, so a self-update never reloads mid-use
     this._todo = [];
+    this._bins = null;         // {at, days: [{date, items}]}
     this._sig = '';
     this._themePref = (() => { try { return localStorage.getItem('ross-home-theme') || 'auto'; } catch { return 'auto'; } })();
   }
@@ -506,6 +527,34 @@ class RossHome extends HTMLElement {
     });
     return hour ? {now: false, text: `Rain at ${hhmm(new Date(hour.datetime))}`, at: hour.datetime} : null;
   }
+  // Bin days from the council's calendar, fetched every half hour.
+  async _loadBins() {
+    const id = this._config?.bins;
+    if (!id || !this._s(id) || (this._bins && Date.now() - this._bins.at < 1800000) || this._binsLoading) return;
+    this._binsLoading = true;
+    try {
+      const start = new Date(); start.setHours(0, 0, 0, 0);
+      const end = new Date(start.getTime() + 29 * 86400e3);
+      const res = await this._hass.callApi('GET', `calendars/${id}?start=${encodeURIComponent(start.toISOString())}&end=${encodeURIComponent(end.toISOString())}`);
+      const byDay = new Map();
+      for (const e of res || []) {
+        const d = e.start?.date || (e.start?.dateTime || '').slice(0, 10);
+        if (!d) continue;
+        if (!byDay.has(d)) byDay.set(d, []);
+        byDay.get(d).push(binInfo(e.summary));
+      }
+      this._bins = {at: Date.now(), days: [...byDay].sort(([a], [b]) => (a < b ? -1 : 1)).map(([date, items]) => ({date, items}))};
+      this._sig = '';
+      this._render();
+    } catch { this._bins = {at: Date.now(), days: []}; } finally { this._binsLoading = false; }
+  }
+  // The next collection still to come: today's counts until noon.
+  _nextBins() {
+    const today = new Date(); today.setHours(0, 0, 0, 0);
+    const upcoming = (this._bins?.days || []).map((d) => ({...d, away: Math.round((localDay(d.date) - today) / 86400e3)}))
+      .filter((d) => d.away > 0 || (d.away === 0 && new Date().getHours() < 12));
+    return upcoming;
+  }
   async _loadTodo() {
     const id = this._config?.todo, s = this._hass?.states[id];
     if (!s) return;
@@ -573,11 +622,12 @@ class RossHome extends HTMLElement {
       const d = s.entity_id.split('.')[0];
       if (d === 'light' || d === 'person' || d === 'update' || d === 'media_player' || d === 'climate') sig += `|${s.entity_id}:${s.state}:${s.attributes?.brightness ?? ''}`;
     }
-    return sig + `|${Object.keys(h.areas || {}).length}|${this._rain()?.text}|${this._history?.at}`;
+    return sig + `|${Object.keys(h.areas || {}).length}|${this._rain()?.text}|${this._history?.at}|${this._bins?.at}`;
   }
   _render(force = false) {
     if (!this._hass || !this._config || !this.shadowRoot.querySelector('.root')) return;
     this._loadTodo();
+    this._loadBins();
     this._watchDoor();
     const now = Date.now(), sig = this._signature(now);
     if (!force && sig === this._sig) return;
@@ -628,6 +678,7 @@ class RossHome extends HTMLElement {
       <div class="hello"><h1>${greet}${name ? `, ${esc(name)}` : ''}</h1><p>${date}</p></div>
       ${people.length ? `<span class="pill wide people">${avatars}</span>` : ''}
       ${w ? `<span class="pill">${weatherIcon(w.state, night)}<span class="num">${temp === null ? '—' : Math.round(temp)}°</span><span class="dim">${esc(WEATHER_WORDS[w.state] || pretty(w.state))}</span></span>` : ''}
+      ${this._binPill()}
       ${this._rainPill()}
       <button class="pill wide" data-act="sheet" data-kind="status">${status}</button>
       <button class="pill iconbtn" data-act="theme" title="Theme: ${this._themePref}">${icon(themeIcon)}</button>
@@ -635,6 +686,11 @@ class RossHome extends HTMLElement {
     </header>`;
   }
 
+  _binPill() {
+    const next = this._nextBins()[0];
+    if (!next || next.away > 1) return '';
+    return `<button class="pill bins" data-act="sheet" data-kind="bins">${binDots(next.items)}Bins ${next.away === 0 ? 'today' : 'tomorrow'}</button>`;
+  }
   _rainPill() {
     const r = this._rain();
     return r ? `<button class="pill rain" data-act="sheet" data-kind="weather">${icon('umbrella')}${r.text}</button>` : '';
@@ -787,9 +843,12 @@ class RossHome extends HTMLElement {
     const s = this._s(this._config.todo);
     if (!s) return '';
     const open = this._todo.filter((i) => i.status === 'needs_action');
-    const body = open.length ? open.slice(0, 4).map((i) => `<div class="task"><span class="txt"><div class="name">${esc(i.summary)}</div>${i.due ? `<div class="st">Due ${esc(i.due)}</div>` : ''}</span>
+    const next = this._nextBins()[0];
+    const bins = next ? `<button class="task binrow" data-act="sheet" data-kind="bins">${binDots(next.items)}<span class="txt"><div class="name">Bins ${binWhen(next)}</div>
+        <div class="st">${esc(next.items.map((b) => b.short).join(', '))}</div></span>${icon('chevron')}</button>` : '';
+    const body = bins + (open.length ? open.slice(0, 4).map((i) => `<div class="task"><span class="txt"><div class="name">${esc(i.summary)}</div>${i.due ? `<div class="st">Due ${esc(i.due)}</div>` : ''}</span>
         <button class="tick" data-act="tick" data-uid="${esc(i.uid)}" aria-label="Tick off ${esc(i.summary)}">${icon('check')}</button></div>`).join('')
-      : `<div class="empty">${icon('list')}<span>Nothing on the list. Add things from the Home Assistant app or say “Alexa, add milk to my shopping list.”</span></div>`;
+      : `<div class="empty">${icon('list')}<span>Nothing on the list. Add things from the Home Assistant app or say “Alexa, add milk to my shopping list.”</span></div>`);
     return this._card(esc(s.attributes.friendly_name || 'To do'), open.length > 4 ? `${open.length - 4} more` : open.length ? `${open.length} to get` : '', body, `data-act="more" data-entity="${s.entity_id}"`);
   }
 
@@ -806,7 +865,7 @@ class RossHome extends HTMLElement {
       this._mountStream(host.querySelector('.stream'));
       return;
     }
-    const html = kind === 'purifier' ? this._purifierSheet() : kind === 'cameras' ? this._camerasSheet() : kind === 'weather' ? this._weatherSheet() : this._statusSheet(alerts);
+    const html = kind === 'purifier' ? this._purifierSheet() : kind === 'cameras' ? this._camerasSheet() : kind === 'weather' ? this._weatherSheet() : kind === 'bins' ? this._binsSheet() : this._statusSheet(alerts);
     if (existing && existing.dataset.kind === kind) { existing.innerHTML = html; return; }
     host.innerHTML = `<div class="layer" data-act="close"><div class="sheet" role="dialog" aria-modal="true" data-kind="${kind}">${html}</div></div>`;
   }
@@ -883,6 +942,13 @@ class RossHome extends HTMLElement {
     return this._sheetHead('cloud', 'home', 'Weather', r ? 'blue' : '', `<b>${temp === null ? '—' : Math.round(temp)}° · ${esc(WEATHER_WORDS[w?.state] || pretty(w?.state))}</b><span class="dim">· ${r ? r.text : 'No rain in the next 12 hours'}</span>`) +
       `<div class="panel"><h3>Next 12 hours</h3><div class="hint">Chance of rain under each hour; wet hours are tinted.</div><div class="hours">${hours || '<div class="dim">Hourly forecast loading…</div>'}</div></div>
        <div class="panel" style="margin-top:14px"><h3>This week</h3><div class="days week">${days}</div></div>`;
+  }
+  _binsSheet() {
+    const days = this._nextBins().slice(0, 4), next = days[0];
+    const rows = days.map((d) => `<div class="panel binday"><h3>${esc(localDay(d.date).toLocaleDateString('en-GB', {weekday: 'long', day: 'numeric', month: 'long'}))}<span class="dim"> · ${binWhen(d)}</span></h3>
+        ${d.items.map((b) => `<div class="bin"><span class="bindot big" style="--c:${b.colour}"></span><span class="txt"><div class="name">${esc(b.short)}</div><div class="st">${esc(b.bin)}</div></span></div>`).join('')}</div>`).join('');
+    return this._sheetHead('bin', 'ev', 'Bin days', '', next ? `<b>Next: ${binWhen(next)}</b><span class="dim">· reminder on your phone at 7pm the night before</span>` : '<b>No collections found</b>') +
+      (rows || '<div class="dim">Nothing in the council calendar for the next four weeks.</div>');
   }
   _airChart() {
     const pts = this._history?.points || [], w = 360, h = 110, end = Date.now(), start = end - 24 * 3600e3;

@@ -32,6 +32,7 @@ add('sensor.front_door_battery', 'unknown', {device_class: 'battery', unit_of_me
 ['garden', 'living_room', 'dining_room'].forEach((n) => add(`sensor.${n}_battery`, '100', {device_class: 'battery', unit_of_measurement: '%'}));
 add('light.garden_light', 'off', {friendly_name: 'Garden Light'});
 add('switch.garden_motion_detection', 'off');
+add('calendar.waste_collection_schedule_london_borough_of_bexley', 'off');
 add('todo.shopping_list', q.get('todo') ? '2' : '0', {friendly_name: 'Shopping list'});
 add('sensor.backup_last_successful_automatic_backup', iso(17 * 60));
 add('binary_sensor.remote_ui', 'on');
@@ -61,6 +62,14 @@ hass = {states: {...S}, areas, entities, devices: {}, user: {name: 'Ross Harriso
     if (m.type === 'todo/item/list') return {items: todo};
     if (m.type === 'history/history_during_period') return {[m.entity_ids[0]]: history};
     return {};
+  },
+  callApi: async (method, path) => {
+    const ymd = (n) => { const d = new Date(now + n * 86400e3); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; };
+    const first = Number(q.get('bins') ?? 6);
+    const ev = (n, summary) => ({start: {date: ymd(n)}, end: {date: ymd(n + 1)}, summary});
+    if (path.startsWith('calendars/')) return [ev(first, 'Brown Wheelie (Garden waste)'), ev(first, 'Brown Caddy (Food waste)'), ev(first, 'White Lidded Wheelie (Plastics, cans and glass)'),
+      ev(first + 7, 'Brown Caddy (Food waste)'), ev(first + 7, 'Blue Lidded Wheelie (Paper and card)'), ev(first + 7, 'Green Wheelie (Non-recyclable waste)')];
+    return [];
   },
   callService: async (d, s, data) => {
     console.log('service', d, s, JSON.stringify(data));
