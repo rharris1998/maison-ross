@@ -103,7 +103,10 @@ class MaisonDashboard extends HTMLElement {
   // A browser may keep a failed module import for the life of the page, so
   // every retry asks for the bundle under a new URL.
   bundleURL(attempt) { return `./vendor/maison-react.js?v=38${attempt?`&retry=${attempt}`:''}`; }
-  loadBundle(attempt) { return import(this.bundleURL(attempt)); }
+  // maison-ross: the first load names the bundle outright, so the release
+  // build can fold it into the one file HACS serves; a retry asks again under
+  // a fresh URL, which only the unbundled /local/maison copy can answer.
+  loadBundle(attempt) { return attempt ? import(this.bundleURL(attempt)) : import('./vendor/maison-react.js?v=38'); }
   retryBundle() { this._load={state:'idle',attempt:this.loadState().attempt+1};this.showLoadState();this.ensureReact(); }
   // Until React mounts, .wrap holds one line in Maison's own markup, which
   // styles.js draws: p.m-loading, or the failure notice, div.m-notice with

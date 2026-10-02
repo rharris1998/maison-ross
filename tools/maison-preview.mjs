@@ -23,12 +23,14 @@ const safeAttributes=new Set([
  'away_from','clock_offset_s','week','next_target',
  // Maison's sky (#29 step 3): the sun's position and the weather's cloud cover.
  'elevation','azimuth','rising','cloud_coverage',
+ // maison-ross: the doorbell's kind of activity and an update's title.
+ 'category','title',
 ]);
 // The modules that name entities outright, so the preview serves those states
 // beside every sensor and binary sensor.
 const sourceFiles=['model.js','maison-dashboard.js','actions.js','guard.js','screen.js','history.js','car.js','climate.js','today.js','energy.js','system.js','sky.js'];
 const source=sourceFiles.map(name=>{try{return readFileSync(resolve(repo,'config/www/maison',name),'utf8');}catch{return '';}}).join('\n');
-const explicitIds=new Set(source.match(/(?:climate|person|calendar|script|input_boolean|input_number|schedule|number|lock|switch|weather|vacuum|cover|update|device_tracker|input_text|sun)\.[a-z0-9_]+/g)||[]);
+const explicitIds=new Set(source.match(/(?:climate|person|calendar|script|input_boolean|input_number|schedule|number|lock|switch|weather|vacuum|cover|update|device_tracker|input_text|sun|fan|camera|light)\.[a-z0-9_]+/g)||[]);
 
 function rawStates(){
  const merged={};

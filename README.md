@@ -1,3 +1,30 @@
+# Maison (Ross)
+
+Ross's Home Assistant dashboard: a fork of [bnlqn/maison](https://github.com/bnlqn/maison)
+(MIT), rewired for this house. Today shows the weather, what needs attention,
+the bedroom air purifier, the front door and the Ring cameras; Home status is
+upstream's. Climate, Car and Energy are out of the navigation until this house
+has the devices for them.
+
+## Install with HACS
+
+1. HACS → ⋮ → Custom repositories → add `rharris1998/maison-ross`, type **Dashboard**.
+2. Download **Maison (Ross)**. HACS registers `/hacsfiles/maison-ross/maison-ross.js`.
+3. Create a dashboard with one panel view holding `type: custom:maison-dashboard`.
+
+Every push to `main` builds `dist/maison-ross.js` and publishes it as a release
+(`.github/workflows/release.yml`), which HACS offers as an update.
+
+## What changed from upstream
+
+- `config/www/maison/model.js`: this house's entities, cameras and alerts.
+- `config/www/maison/today.js`: Today's widgets for the purifier, doorbell and cameras.
+- `config/www/maison/screen.js`: Today is the only tab.
+- `config/www/maison/maison-dashboard.js`: the React bundle is named outright so it can be folded into one file.
+- `tools/build-hacs.mjs`, `hacs.json`, the release workflow: the HACS build.
+
+---
+
 # Maison
 
 A Home Assistant dashboard built as a single custom element: one panel view,

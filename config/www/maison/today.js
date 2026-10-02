@@ -11,7 +11,7 @@
 // is an accessible name only. Control, Link and Kit are the typedefs in
 // climate.js's value section, CarGlance is car.js's and EnergyBreakdown is
 // energy.js's.
-import {E, BINS, numeric, available, pretty, alerts} from './model.js?v=38';
+import {E, BINS, CAMERAS, numeric, available, pretty, alerts} from './model.js?v=38';
 import {carGlanceValue, carStatus, clock} from './car.js?v=38';
 import {climateHeader} from './climate.js?v=38';
 import {energyHeader, energyBreakdown, GRID_ACTIVE_W} from './energy.js?v=38';
@@ -276,22 +276,88 @@ function widgetsValue(needs, upcoming) {
     {id: 'climate', size: covered % 4 === 0 ? 'large' : 'medium'}, upcoming && {id: 'upcoming', size: upcoming}, {id: 'energyToday', size: 'medium'}].filter(Boolean);
 }
 
+// ---- Ross's house (maison-ross) --------------------------------------------
+// Today draws the purifier in the Car's ring widget, the doorbell in the
+// power-now figure, and the cameras as a list in Coming up's place, so the
+// React bundle draws them unchanged.
+const more = (kit, entity, extra) => kit.link({command: 'more', entity}, extra);
+// How long ago a timestamp state was, in a few words ('5 min ago', '3 h ago',
+// 'Tue 13:02'), or null without one.
+function ago(state, {now, tz}) {
+  const t = Date.parse(state?.state ?? '');
+  if (!Number.isFinite(t)) return null;
+  const mins = Math.max(0, Math.round((now - t) / 60000));
+  if (mins < 1) return 'just now';
+  if (mins < 60) return `${mins} min ago`;
+  if (mins < 24 * 60) return `${Math.round(mins / 60)} h ago`;
+  return zoned(tz, {weekday: 'short', hour: '2-digit', minute: '2-digit', hourCycle: 'h23'}).format(new Date(t));
+}
+const AIR_WORDS = Object.freeze({excellent: 'Excellent', good: 'Good', moderate: 'Moderate', poor: 'Poor', very_poor: 'Very poor', inferior: 'Poor'});
+// The purifier: its filter left as the ring, the air quality as the headline,
+// what it is doing as the line. Opens the purifier.
+function airValue(snap, kit) {
+  const {states} = snap, fan = states[E.purifier], filter = numeric(states[E.filterLife]?.state), pm = numeric(states[E.pm25]?.state);
+  const quality = available(states[E.airQuality]) ? AIR_WORDS[states[E.airQuality].state] ?? pretty(states[E.airQuality].state) : null;
+  const headline = quality ? `Air ${quality.toLowerCase()}` : 'No air reading';
+  const mode = !available(fan) ? 'Purifier offline' : fan.state === 'off' ? 'Purifier off'
+    : `${pretty(fan.attributes?.preset_mode ?? 'on')} mode${pm === null ? '' : ` · PM2.5 ${pm}`}`;
+  const ariaLabel = `Air: ${headline}. ${mode}. Filter ${percent(filter)} left. Open the purifier`;
+  return {car: {link: more(kit, E.purifier, {ariaLabel}), title: 'Bedroom air', headline, lastConfirmed: mode,
+      bar: {fill: filter, reserve: null, limit: null, stale: !available(fan), ariaLabel: `Filter ${percent(filter)} left`}},
+    carRing: {icon: 'leaf', label: percent(filter), tone: filter !== null && filter <= 10 ? 'pink' : 'green'}};
+}
+// The doorbell: when it last saw someone, as the figure. Opens its camera.
+function doorbellValue(snap, kit) {
+  const state = snap.states[E.doorbellActivity], t = Date.parse(state?.state ?? ''), when = ago(state, snap);
+  const known = Number.isFinite(t), sameDay = known && localDate(t, snap.tz) === localDate(snap.now, snap.tz);
+  const time = known ? zoned(snap.tz, {hour: '2-digit', minute: '2-digit', hourCycle: 'h23'}).format(new Date(t)) : '—';
+  const kind = state?.attributes?.category === 'ding' ? 'Ring' : state?.attributes?.category === 'motion' ? 'Motion' : 'Activity';
+  return {title: 'Front door', icon: 'home', tone: known && snap.now - t < 15 * 60000 ? 'yellow' : 'gray',
+    figure: {value: time, unit: known && !sameDay ? zoned(snap.tz, {weekday: 'short'}).format(new Date(t)) : ''},
+    line: known ? `${kind} · ${when}` : 'No doorbell reading',
+    link: more(kit, CAMERAS[0][1], {ariaLabel: `Front door: last ${kind.toLowerCase()} ${when ?? 'unknown'}. Open the doorbell camera`})};
+}
+// The cameras: each with its last activity and battery, opening its live view.
+function camerasValue(snap, kit) {
+  const rows = CAMERAS.filter(([, camera]) => snap.states[camera]).map(([name, camera, activity, battery]) => {
+    const when = ago(snap.states[activity], snap), level = numeric(snap.states[battery]?.state), live = available(snap.states[camera]);
+    return {link: more(kit, camera, {ariaLabel: `${name} camera${when ? `, last activity ${when}` : ''}. Open its live view`}), icon: 'motion', tone: live ? 'gray' : 'orange',
+      title: name, detail: !live ? 'Offline' : when ? `Last activity ${when}` : 'No recent activity', value: level === null ? '' : `${Math.round(level)}%`};
+  });
+  if (!rows.length) return {value: null, size: null};
+  const size = upcomingSize(rows.length), room = WIDGET_ROWS[size], shown = rows.length > room ? rows.slice(0, room - 1) : rows, hidden = rows.length - shown.length;
+  return {size, value: {title: 'Cameras', icon: 'motion', loading: false, rows: shown, note: null,
+    more: hidden ? kit.link({command: 'navigate', entity: 'system'}, {label: `${hidden} more`, ariaLabel: `${hidden} more cameras. Open Home status`}) : null}};
+}
+// The phone's chips: the air, the front door and Home Assistant itself.
+function rossGlance(snap, kit, air, door) {
+  const remote = snap.states[E.remoteUi], backup = ago(snap.states[E.lastBackup], snap);
+  const item = (id, icon, tone, title, line, link) => ({id, icon, tone, title, line, link});
+  return {label: 'At a glance', items: [
+    item('air', 'leaf', air.carRing.tone === 'pink' ? 'pink' : 'green', 'Air', air.car.headline.replace(/^Air /, ''), air.car.link),
+    item('door', 'home', door.tone, 'Front door', door.line, door.link),
+    item('system', 'settings', available(remote) && remote.state === 'on' ? 'green' : 'gray', 'Home', backup ? `Backed up ${backup}` : 'Home status',
+      kit.link({command: 'navigate', entity: 'system'}, {ariaLabel: 'Open Home status'}))]};
+}
+// The widgets in rows of four cells: Needs you and the two small ones, then
+// the cameras across the row; without Needs you the cameras share the row.
+function rossWidgets(needs, cameras) {
+  return [needs && {id: 'needs', size: 'medium'}, {id: 'car', size: 'small'}, {id: 'live', size: 'small'},
+    cameras && {id: 'upcoming', size: needs ? 'large' : cameras === 'large' ? 'large' : 'medium'}].filter(Boolean);
+}
+
 /**
- * The Today page: the vacuum's controls and the Car that its widgets carry,
- * then what it draws, in drawing order (#29 step 4).
+ * The Today page for Ross's house: Needs you, the bedroom air, the front
+ * door and the cameras, in drawing order. The vacuum and Car fields are kept
+ * in the shape the renderer reads.
  * @param {object} snap the element's snapshot
  * @param {Kit} kit
  * @returns {TodayPage}
  */
 export function todayPageValue(snap, kit) {
-  const zones = climateHeader(snap), {nodes} = energyHeader(snap).hero, car = carStatus(snap.states, {now: snap.now, zone: snap.tz, last: snap.carLast});
-  const needs = needsValue(snap, kit), upcoming = upcomingValue(snap, kit);
-  return {id: 'today', vacuum: vacuumValue(snap, kit), car: carGlanceValue(snap, kit),
-    glance: glanceValue(snap, kit, {zones: zones.hero, nodes, car}), needs, upcoming: upcoming.value, live: liveValue(snap, kit, nodes),
-    climate: {title: 'Climate', icon: 'climate', note: zones.line ?? null, chart: zones.hero,
-      link: navigate(kit, 'climate', {ariaLabel: `Climate${zones.line ? `: ${zones.line}` : ''}. ${zones.hero.ariaLabel} Open Climate`})},
-    carRing: {icon: 'car', label: percent(car.battery.value), tone: carCharging(car) ? 'green' : 'gray'},
-    energyToday: energyTodayValue(snap, kit), vacuumLine: vacuumLineValue(snap), widgets: widgetsValue(needs, upcoming.size)};
+  const needs = needsValue(snap, kit), air = airValue(snap, kit), door = doorbellValue(snap, kit), cameras = camerasValue(snap, kit);
+  return {id: 'today', vacuum: vacuumValue(snap, kit), car: air.car, glance: rossGlance(snap, kit, air, door), needs, upcoming: cameras.value,
+    live: door, climate: null, carRing: air.carRing, energyToday: null, vacuumLine: vacuumLineValue(snap), widgets: rossWidgets(needs, cameras.size)};
 }
 
 /**

@@ -54,8 +54,9 @@ export function kit(snap) {
 // The pages in the navigation's order, as [id, label, icon]. Home status is
 // opened from the header's tools instead. The tab glyphs are filled, as iOS
 // draws a tab bar.
-export const NAV = Object.freeze([['today', 'Today', 'tab-today'], ['climate', 'Climate', 'tab-climate'], ['car', 'Car', 'tab-car'],
-  ['energy', 'Energy', 'tab-energy']].map(item => Object.freeze(item)));
+// Ross's house has no heating zones, car or solar yet, so Today is the one
+// tab; add Climate back here when the radiator thermostats arrive.
+export const NAV = Object.freeze([['today', 'Today', 'tab-today']].map(item => Object.freeze(item)));
 // Each page's heading; Today's greets instead.
 export const TITLES = Object.freeze({climate: 'Climate', car: 'Car', energy: 'Energy', system: 'Home status'});
 // Every page there is a route to.

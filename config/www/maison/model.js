@@ -2,6 +2,12 @@
 // deliberately explicit household model, independent of other dashboards.
 export const E = Object.freeze({
   weather: 'weather.forecast_home',
+  // Ross's house (maison-ross). The bedroom air purifier, the Ring doorbell
+  // and cameras, and Home Assistant's own health.
+  purifier: 'fan.bedroom_purifier', airQuality: 'sensor.core_300s_series_air_quality',
+  pm25: 'sensor.core_300s_series_pm2_5', filterLife: 'sensor.core_300s_series_filter_lifetime',
+  doorbellActivity: 'sensor.front_door_last_activity', remoteUi: 'binary_sensor.remote_ui',
+  lastBackup: 'sensor.backup_last_successful_automatic_backup',
   // The sun's elevation and azimuth, for the sky (#29).
   sun: 'sun.sun',
   solar: 'sensor.goodwe_pv_power', solarToday: 'sensor.goodwe_today_s_pv_generation',
@@ -167,8 +173,16 @@ export const ROOM_DETAIL = Object.freeze({
   living: 'house', kitchen: 'house', dining: 'house', office: 'attic', playground: 'attic',
   bedroom: 'bedroom-suite', noah: 'noah', sam: 'sam', ensuite: 'towel-rails', bathroom: 'towel-rails', hallway: null,
 });
-export const CALENDARS = ['calendar.alex_personal','calendar.sam_personal','calendar.kids','calendar.family','calendar.alex_friends_social'];
-export const BINS = [['Residual waste','sensor.residual_waste','bin'],['PMD recycling','sensor.pmc','recycle'],['Paper & cardboard','sensor.paper','paper']];
+// No calendars yet: Coming up stays hidden until one is added here.
+export const CALENDARS = [];
+// The Ring cameras, in the order Today lists them: [name, camera, last activity, battery].
+export const CAMERAS = Object.freeze([
+ Object.freeze(['Front door','camera.front_door_live_view','sensor.front_door_last_activity','sensor.front_door_battery']),
+ Object.freeze(['Garden','camera.garden_live_view','sensor.garden_last_activity','sensor.garden_battery']),
+ Object.freeze(['Living room','camera.living_room_live_view','sensor.living_room_last_activity','sensor.living_room_battery']),
+ Object.freeze(['Dining room','camera.dining_room_live_view','sensor.dining_room_last_activity','sensor.dining_room_battery']),
+]);
+export const BINS = [];
 export const MAINTENANCE = [
  ['Vacuum filter','sensor.roborock_s8_pro_ultra_filter_time_left'],
  ['Dock strainer','sensor.roborock_s8_pro_ultra_dock_strainer_time_left'],
@@ -190,6 +204,9 @@ export function alerts(states) {
  for(const [name,id,ok] of [['Vacuum','sensor.roborock_s8_pro_ultra_vacuum_error','none'],['Vacuum dock','sensor.roborock_s8_pro_ultra_dock_dock_error','ok']]) if(available(states[id])&&states[id].state!==ok) out.push({title:`${name}: ${pretty(states[id].state)}`,detail:'Device reported an error',entity:id,icon:'alert'});
  for(const [name,id] of BINS) { const n=numeric(states[id]?.state); if(n!==null&&n<=1&&n>=0) out.push({title:`${name} · ${binDay(n).toLowerCase()}`,detail:'Put the bin out',entity:id,icon:'bin'}); }
  for(const s of Object.values(states)) if(s.attributes?.device_class==='battery'&&s.attributes?.unit_of_measurement==='%'&&numeric(s.state)!==null&&numeric(s.state)<=20&&!/tesla|iphone/i.test(s.entity_id)) out.push({title:`${s.attributes.friendly_name || 'Device battery'}\u00a0·\u00a0${s.state}%`,detail:'Battery running low',entity:s.entity_id,icon:'battery'});
+ for(const [name,,,battery] of CAMERAS) if(states[battery]&&!available(states[battery])&&states[battery].state==='unavailable') out.push({title:`${name} camera offline`,detail:'Check its power and Wi-Fi',entity:battery,icon:'signal'});
+ { const n=numeric(states[E.filterLife]?.state); if(n!==null&&n<=10) out.push({title:`Purifier filter · ${n}% left`,detail:'Order a replacement filter',entity:E.filterLife,icon:'leaf'}); }
+ { const due=Object.values(states).filter(s=>s.entity_id.startsWith('update.')&&s.state==='on'); if(due.length) out.push({title:due.length===1?`${due[0].attributes?.title||due[0].attributes?.friendly_name||'An update'} update ready`:`${due.length} updates ready`,detail:'Install from Settings',entity:due[0].entity_id,icon:'refresh'}); }
  return out;
 }
 
