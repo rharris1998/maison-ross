@@ -1,7 +1,7 @@
 name: Release
 
-# Every push to main builds dist/maison-ross.js and publishes it as a GitHub
-# release, which HACS offers as an update.
+# Every push to main builds dist/maison-ross.js from src/ross-home.js and
+# publishes it as a GitHub release, which HACS offers as an update.
 on:
   push:
     branches: [main]
@@ -18,32 +18,13 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 24
-          cache: npm
-          cache-dependency-path: frontend/maison/package-lock.json
-      - name: Install build tools
-        run: npm ci
-        working-directory: frontend/maison
-      - name: Rebuild the React bundle and icons
-        run: npm run build
-        working-directory: frontend/maison
-      - name: Bundle for HACS
-        run: |
-          ln -s frontend/maison/node_modules node_modules
-          node tools/build-hacs.mjs
-      - name: Check the bundle loads
-        run: |
-          test -s dist/maison-ross.js
-          grep -q "maison-dashboard" dist/maison-ross.js
-          ls -la dist
+      - name: Build
+        run: VERSION="v2.0.${{ github.run_number }}" node tools/build-ross-home.mjs
+      - name: Check it parses
+        run: node --check dist/maison-ross.js
       - name: Publish release
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          tag="v1.0.${{ github.run_number }}"
-          gh release create "$tag" dist/maison-ross.js \
-            --title "Maison (Ross) $tag" \
-            --notes "Built from ${{ github.sha }}."
-      - uses: actions/upload-artifact@v4
-        with:
-          name: maison-ross
-          path: dist/maison-ross.js
+          tag="v2.0.${{ github.run_number }}"
+          gh release create "$tag" dist/maison-ross.js --title "Ross Home $tag" --notes "Built from ${{ github.sha }}."

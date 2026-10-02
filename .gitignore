@@ -1,3 +1,4 @@
 node_modules/
 frontend/maison/test-results/
 .DS_Store
+dist/
