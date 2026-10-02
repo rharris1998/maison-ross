@@ -1,0 +1,12 @@
+# Tracked source for the new storage-mode Maison dashboard.
+# Publish this configuration with lovelace/config/save to url_path maison-home.
+# Resource: /local/maison/maison-dashboard.js?v=38 (module).
+# Do not add this to configuration.yaml: API registration avoids a Core restart.
+title: Maison
+views:
+  - title: Home
+    path: home
+    icon: mdi:home-outline
+    type: panel
+    cards:
+      - type: custom:maison-dashboard

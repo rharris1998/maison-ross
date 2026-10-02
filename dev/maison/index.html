@@ -1,0 +1,16 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Maison</title>
+<link rel="stylesheet" href="/dev/preview.css">
+<div id="preview">
+  <span id="source">Local preview · controls simulated</span>
+  <label>Appearance <select id="theme"><option value="light">Light</option><option value="dark">Dark</option></select></label>
+  <label>Connection <select id="connection"><option value="online">Online</option><option value="offline">Offline</option></select></label>
+  <label>Device response <select id="behavior"><option value="confirm">Confirm after 1s</option><option value="delay">Delay 15s</option><option value="fail">Fail</option></select></label>
+  <label>Agenda &amp; history <select id="data-mode"><option value="empty">Snapshot has no recorded data</option><option value="sample">Sample data · simulated</option></select></label>
+</div>
+<maison-dashboard></maison-dashboard>
+<script type="module" src="/dev/preview.js"></script>
+</html>

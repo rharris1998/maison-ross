@@ -1,0 +1,28 @@
+{
+  "name": "maison",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "npm run build:icons && npm run build:app",
+    "check": "npm run check:icons && npm run check:app",
+    "build:icons": "node ./build-icons.mjs",
+    "check:icons": "node ./build-icons.mjs --check",
+    "build:app": "node ./build-app.mjs",
+    "check:app": "node ./build-app.mjs --check",
+    "test:visual": "playwright test --config ./visual/playwright.config.mjs",
+    "test:touch": "playwright test --config ./visual/playwright.touch.config.mjs"
+  },
+  "devDependencies": {
+    "@iconify-json/gravity-ui": "1.2.14",
+    "@iconify-json/lucide": "1.2.132",
+    "@iconify-json/ph": "1.2.2",
+    "@playwright/test": "1.63.0",
+    "esbuild": "0.28.2",
+    "react": "19.3.0",
+    "react-aria": "3.52.1",
+    "react-aria-components": "1.21.1",
+    "react-dom": "19.3.0",
+    "react-stately": "3.50.0"
+  }
+}
