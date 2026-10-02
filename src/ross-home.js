@@ -39,6 +39,12 @@ const DEFAULTS = Object.freeze({
   todo: 'todo.shopping_list',
   bins: 'calendar.waste_collection_schedule_london_borough_of_bexley',
   calendar: 'calendar.evie_ross',
+  energy_usage: 'sensor.dcc_sourced_smart_electricity_meter_usage_today',
+  energy_cost: 'sensor.dcc_sourced_smart_electricity_meter_cost_today',
+  energy_rate: 'sensor.dcc_sourced_smart_electricity_meter_rate',
+  energy_standing: 'sensor.dcc_sourced_smart_electricity_meter_standing_charge',
+  water: 'sensor.thames_water_meter_thames_water_sensor',
+  water_rate: 'sensor.thames_water_tariff_thames_water_volumetric_rate',
   // Events left off the calendar card (bins have their own row).
   calendar_hide: '^bin day',
   backup: 'sensor.backup_last_successful_automatic_backup',
@@ -97,6 +103,8 @@ const ICONS = {
   umbrella: '<path d="M22 12a10.06 10.06 1 0 0-20 0Z"/><path d="M12 12v8a2 2 0 0 0 4 0M12 2v1"/>',
   bin: '<path d="M3 6h18M8 6V4h8v2"/><path d="M5 6l1.2 14a2 2 0 0 0 2 2h7.6a2 2 0 0 0 2-2L19 6M10 11v6M14 11v6"/>',
   calendar: '<rect x="3" y="4" width="18" height="18" rx="3"/><path d="M16 2v4M8 2v4M3 10h18"/>',
+  bolt: '<path d="M13 2 3 14h9l-1 8 10-12h-9l1-8Z"/>',
+  drop: '<path d="M12 22a7 7 0 0 0 7-7c0-4-7-13-7-13S5 11 5 15a7 7 0 0 0 7 7Z"/>',
   bell: '<path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/>',
 };
 const icon = (name, cls = '') => `<svg class="ic ${cls}" viewBox="0 0 24 24" aria-hidden="true">${ICONS[name] || ICONS.home}</svg>`;
@@ -386,6 +394,19 @@ header{position:relative;display:flex;align-items:center;gap:14px;margin-bottom:
 .big-ring .ring .num{font-size:48px}
 
 /* Rain, air chart, hours, door */
+.estats{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.estat{display:flex;align-items:center;gap:12px;padding:12px;border-radius:18px;background:var(--tile);border:1px solid var(--tile-line);min-width:0}
+.estat .badge{width:40px;height:40px;border-radius:14px;display:grid;place-items:center;flex:none;color:var(--c);background:color-mix(in srgb,var(--c) 16%,transparent)}
+.estat .badge svg{width:22px;height:22px}
+.estat .v{font-size:26px;line-height:1.1}.estat .v small{font-size:13px;color:var(--dim);margin-left:3px;font-family:inherit}
+.estat .st{font-size:12.5px;color:var(--dim);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.bars{display:flex;gap:6px;align-items:flex-end;height:96px;margin-top:14px}
+.bar{flex:1;display:flex;flex-direction:column;align-items:center;gap:6px;height:100%}
+.bar .col{flex:1;width:100%;display:flex;align-items:flex-end;border-radius:6px;overflow:hidden;background:color-mix(in srgb,var(--c) 7%,transparent)}
+.bar .fill{width:100%;border-radius:4px 4px 0 0;background:color-mix(in srgb,var(--c) 55%,transparent)}
+.bar.today .fill{background:var(--c)}
+.bar .d{font-size:11px;color:var(--dim)}.bar.today .d{color:var(--text);font-weight:700}
+.erows{margin-top:12px}.erow{display:flex;justify-content:space-between;gap:12px;padding:8px 0;border-top:1px solid var(--tile-line);font-size:14px}
 .agenda .evday{font-size:12px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--dim);margin:14px 0 2px}
 .agenda .evday:first-child{margin-top:0}
 .ev{display:flex;align-items:center;gap:14px;min-height:52px;padding:6px 12px;border-radius:16px;background:var(--tile);border:1px solid var(--tile-line);margin-top:6px}
@@ -434,7 +455,8 @@ class RossHome extends HTMLElement {
     this._touched = 0;         // last tap, so a self-update never reloads mid-use
     this._todo = [];
     this._bins = null;
-    this._events = null;       // {at, list: [{start, end, allDay, summary, location}]}         // {at, days: [{date, items}]}
+    this._events = null;
+    this._energy = null;       // {at, elec: Map(dayMs → kWh), water: Map(dayMs → L)}       // {at, list: [{start, end, allDay, summary, location}]}         // {at, days: [{date, items}]}
     this._sig = '';
     this._themePref = (() => { try { return localStorage.getItem('ross-home-theme') || 'auto'; } catch { return 'auto'; } })();
   }
@@ -560,6 +582,52 @@ class RossHome extends HTMLElement {
       this._render();
     } catch { this._bins = {at: Date.now(), days: []}; } finally { this._binsLoading = false; }
   }
+  // Daily electricity and water from Home Assistant's long-term statistics,
+  // fetched every half hour.
+  async _loadEnergy() {
+    const c = this._config, ids = [c.energy_usage, c.water].filter((id) => id && this._s(id));
+    if (!ids.length || (this._energy && Date.now() - this._energy.at < 1800000) || this._energyLoading) return;
+    this._energyLoading = true;
+    try {
+      const start = new Date(); start.setHours(0, 0, 0, 0); start.setDate(start.getDate() - 14);
+      const res = await this._hass.callWS({type: 'recorder/statistics_during_period', start_time: start.toISOString(), statistic_ids: ids, period: 'day', types: ['change'], units: {}});
+      const toMap = (rows) => {
+        const m = new Map();
+        for (const r of rows || []) {
+          const d = new Date(typeof r.start === 'number' ? r.start : Date.parse(r.start)); d.setHours(0, 0, 0, 0);
+          if (Number.isFinite(r.change)) m.set(d.getTime(), (m.get(d.getTime()) || 0) + r.change);
+        }
+        return m;
+      };
+      this._energy = {at: Date.now(), elec: toMap(res?.[c.energy_usage]), water: toMap(res?.[c.water])};
+      this._sig = '';
+      this._render();
+    } catch { this._energy = {at: Date.now(), elec: new Map(), water: new Map()}; } finally { this._energyLoading = false; }
+  }
+  // The last n days ending today, oldest first; today's electricity comes
+  // straight from the meter's own "today" sensor.
+  _energyDays(kind, n) {
+    const out = [], today = new Date(); today.setHours(0, 0, 0, 0);
+    const map = this._energy?.[kind] || new Map();
+    for (let i = n - 1; i >= 0; i--) {
+      const d = new Date(today); d.setDate(d.getDate() - i);
+      let v = map.has(d.getTime()) ? map.get(d.getTime()) : null;
+      if (kind === 'elec' && i === 0) v = num(this._s(this._config.energy_usage)) ?? v;
+      out.push({day: d, v, today: i === 0});
+    }
+    return out;
+  }
+  _lastWater() {
+    const days = this._energyDays('water', 15).filter((d) => d.v > 0);
+    return days[days.length - 1] || null;
+  }
+  _bars(days, tone, unit, digits = 1) {
+    const vals = days.map((d) => d.v).filter((v) => v !== null);
+    if (vals.length < 2) return `<div class="chart-empty dim">Daily history builds up from today, a bar a day.</div>`;
+    const max = Math.max(...vals, 0.001);
+    return `<div class="bars" style="--c:var(--${tone})">${days.map((d) => `<div class="bar ${d.today ? 'today' : ''}" title="${esc(d.day.toLocaleDateString('en-GB', {weekday: 'long', day: 'numeric', month: 'short'}))}: ${d.v === null ? 'no data' : `${d.v.toFixed(digits)} ${unit}`}">
+        <span class="col"><span class="fill" style="height:${d.v === null ? 0 : Math.max(3, (d.v / max) * 100)}%"></span></span><span class="d">${d.day.toLocaleDateString('en-GB', {weekday: 'narrow'})}</span></div>`).join('')}</div>`;
+  }
   // The shared calendar's next two weeks, fetched every ten minutes.
   async _loadEvents() {
     const id = this._config?.calendar;
@@ -667,7 +735,7 @@ class RossHome extends HTMLElement {
     // "minutes ago" lines move with the minute).
     const h = this._hass, ids = new Set();
     const c = this._config;
-    for (const k of ['weather', 'sun', 'purifier', 'air_quality', 'pm25', 'filter_life', 'purifier_display', 'purifier_child_lock', 'doorbell',
+    for (const k of ['energy_usage', 'energy_cost', 'water', 'weather', 'sun', 'purifier', 'air_quality', 'pm25', 'filter_life', 'purifier_display', 'purifier_child_lock', 'doorbell',
       'doorbell_activity', 'floodlight', 'motion_alerts', 'todo', 'backup', 'remote', 'phone_battery']) if (c[k]) ids.add(c[k]);
     for (const cam of c.cameras) { ids.add(cam.camera); ids.add(cam.activity); ids.add(cam.battery); }
     let sig = `${Math.floor(now / 60000)}|${this._themePref}|${this._sheet ? JSON.stringify(this._sheet) : ''}|${this._armed}|${h.user?.name}`;
@@ -676,13 +744,14 @@ class RossHome extends HTMLElement {
       const d = s.entity_id.split('.')[0];
       if (d === 'light' || d === 'person' || d === 'update' || d === 'media_player' || d === 'climate') sig += `|${s.entity_id}:${s.state}:${s.attributes?.brightness ?? ''}`;
     }
-    return sig + `|${Object.keys(h.areas || {}).length}|${this._rain()?.text}|${this._history?.at}|${this._bins?.at}|${this._events?.at}`;
+    return sig + `|${Object.keys(h.areas || {}).length}|${this._rain()?.text}|${this._history?.at}|${this._bins?.at}|${this._events?.at}|${this._energy?.at}`;
   }
   _render(force = false) {
     if (!this._hass || !this._config || !this.shadowRoot.querySelector('.root')) return;
     this._loadTodo();
     this._loadBins();
     this._loadEvents();
+    this._loadEnergy();
     this._watchDoor();
     const now = Date.now(), sig = this._signature(now);
     if (!force && sig === this._sig) return;
@@ -694,7 +763,7 @@ class RossHome extends HTMLElement {
     const alerts = this._alerts();
     root.querySelector('.main').innerHTML = this._header(alerts) +
       `<div class="grid"><div class="col c1">${this._airCard()}${this._weatherCard()}${this._calendarCard()}</div>` +
-      `<div class="col c2">${this._actionsCard()}${this._roomsCard()}</div>` +
+      `<div class="col c2">${this._actionsCard()}${this._roomsCard()}${this._energyCard()}</div>` +
       `<div class="col c3">${this._doorCard()}${this._camerasCard()}${this._todoCard()}</div></div>`;
     this._renderSheet(alerts);
   }
@@ -783,6 +852,35 @@ class RossHome extends HTMLElement {
     return this._card('Bedroom air', a.on ? `${a.mode} · running` : a.mode, body, 'data-act="sheet" data-kind="purifier"');
   }
 
+  _energyCard() {
+    const c = this._config, use = this._s(c.energy_usage), water = this._s(c.water);
+    if (!use && !water) return '';
+    const kwh = num(use), cost = num(this._s(c.energy_cost)), w = this._lastWater();
+    const days = this._energyDays('elec', 7), yesterday = days[days.length - 2]?.v;
+    const body = `<div class="estats">
+        ${use ? `<div class="estat" style="--c:var(--solar)"><span class="badge">${icon('bolt')}</span><div><div class="v num">${kwh === null ? '—' : kwh.toFixed(1)}<small>kWh</small></div>
+          <div class="st">Electricity today${cost !== null ? ` · £${cost.toFixed(2)}` : ''}</div></div></div>` : ''}
+        ${water ? `<div class="estat" style="--c:var(--home)"><span class="badge">${icon('drop')}</span><div><div class="v num">${w ? Math.round(w.v) : '—'}<small>L</small></div>
+          <div class="st">${w ? `Water · ${esc(w.day.toLocaleDateString('en-GB', {weekday: 'short', day: 'numeric'}))}` : 'Water · Thames runs 3 days behind'}</div></div></div>` : ''}
+      </div>${use ? this._bars(days, 'solar', 'kWh') : ''}`;
+    return this._card('Energy', yesterday != null ? `Yesterday ${yesterday.toFixed(1)} kWh` : 'Last 7 days', body, 'data-act="sheet" data-kind="energy"');
+  }
+  _energySheet() {
+    const c = this._config, kwh = num(this._s(c.energy_usage)), cost = num(this._s(c.energy_cost));
+    const rate = num(this._s(c.energy_rate)), standing = num(this._s(c.energy_standing)), wrate = num(this._s(c.water_rate)), w = this._lastWater();
+    const elec = this._energyDays('elec', 14), water = this._energyDays('water', 14);
+    const total = (list) => list.reduce((a, d) => a + (d.v || 0), 0);
+    const wk = elec.slice(-7), wkKwh = total(wk);
+    const row = (k, v) => `<div class="erow"><span class="dim">${k}</span><b class="num">${v}</b></div>`;
+    return this._sheetHead('bolt', 'solar', 'Energy', '', `<b>${kwh === null ? '—' : kwh.toFixed(1)} kWh today${cost !== null ? ` · £${cost.toFixed(2)}` : ''}</b><span class="dim">· meter data lands about 30 minutes late</span>`) +
+      `<div class="panel"><h3>Electricity, last 14 days</h3>${this._bars(elec, 'solar', 'kWh')}
+        <div class="erows">${row('This week', `${wkKwh.toFixed(1)} kWh${rate !== null ? ` · ≈ £${(wkKwh * rate + (standing || 0) * 7).toFixed(2)}` : ''}`)}
+        ${rate !== null ? row('Unit rate', `${(rate * 100).toFixed(2)}p per kWh`) : ''}${standing !== null ? row('Standing charge', `${(standing * 100).toFixed(2)}p a day`) : ''}</div></div>
+       <div class="panel" style="margin-top:14px"><h3>Water, last 14 days</h3><div class="hint">Thames Water's figures arrive about three days late.</div>${this._bars(water, 'home', 'L', 0)}
+        <div class="erows">${row('Latest day', w ? `${Math.round(w.v)} L · ${esc(w.day.toLocaleDateString('en-GB', {weekday: 'long', day: 'numeric', month: 'short'}))}` : 'Waiting for Thames')}
+        ${wrate !== null ? row('Water rate', `£${wrate.toFixed(2)} per m³`) : ''}</div></div>
+       <button class="toggle-row" data-act="nav" data-kind="/energy" style="margin-top:14px"><span class="badge">${icon('bolt')}</span><span class="txt"><div class="name">Open the Energy dashboard</div><div class="st">Home Assistant's full charts and costs</div></span>${icon('chevron')}</button>`;
+  }
   _calendarCard() {
     const s = this._s(this._config.calendar);
     if (!s) return '';
@@ -930,7 +1028,7 @@ class RossHome extends HTMLElement {
       this._mountStream(host.querySelector('.stream'));
       return;
     }
-    const html = kind === 'purifier' ? this._purifierSheet() : kind === 'cameras' ? this._camerasSheet() : kind === 'weather' ? this._weatherSheet() : kind === 'bins' ? this._binsSheet() : kind === 'agenda' ? this._agendaSheet() : this._statusSheet(alerts);
+    const html = kind === 'purifier' ? this._purifierSheet() : kind === 'cameras' ? this._camerasSheet() : kind === 'weather' ? this._weatherSheet() : kind === 'bins' ? this._binsSheet() : kind === 'agenda' ? this._agendaSheet() : kind === 'energy' ? this._energySheet() : this._statusSheet(alerts);
     if (existing && existing.dataset.kind === kind) { existing.innerHTML = html; return; }
     host.innerHTML = `<div class="layer" data-act="close"><div class="sheet" role="dialog" aria-modal="true" data-kind="${kind}">${html}</div></div>`;
   }

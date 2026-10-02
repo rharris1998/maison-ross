@@ -34,6 +34,14 @@ add('light.garden_light', 'off', {friendly_name: 'Garden Light'});
 add('switch.garden_motion_detection', 'off');
 add('calendar.waste_collection_schedule_london_borough_of_bexley', 'off');
 add('calendar.evie_ross', 'off', {friendly_name: 'Evie + Ross'});
+if (!q.get('noenergy')) {
+  add('sensor.dcc_sourced_smart_electricity_meter_usage_today', '3.4', {unit_of_measurement: 'kWh', device_class: 'energy', state_class: 'total_increasing'});
+  add('sensor.dcc_sourced_smart_electricity_meter_cost_today', '1.62', {unit_of_measurement: 'GBP'});
+  add('sensor.dcc_sourced_smart_electricity_meter_rate', '0.2485', {unit_of_measurement: 'GBP/kWh'});
+  add('sensor.dcc_sourced_smart_electricity_meter_standing_charge', '0.5342', {unit_of_measurement: 'GBP'});
+  add('sensor.thames_water_meter_thames_water_sensor', '165946', {unit_of_measurement: 'L'});
+  add('sensor.thames_water_tariff_thames_water_volumetric_rate', '4.2067', {unit_of_measurement: 'GBP/m³'});
+}
 add('todo.shopping_list', q.get('todo') ? '2' : '0', {friendly_name: 'Shopping list'});
 add('sensor.backup_last_successful_automatic_backup', iso(17 * 60));
 add('binary_sensor.remote_ui', 'on');
@@ -61,6 +69,14 @@ hass = {states: {...S}, areas, entities, devices: {}, user: {name: 'Ross Harriso
   connection: {subscribeMessage: async (cb, msg) => { setTimeout(() => cb({forecast: msg.forecast_type === 'hourly' ? hours : days}), 50); return () => {}; }},
   callWS: async (m) => {
     if (m.type === 'todo/item/list') return {items: todo};
+    if (m.type === 'recorder/statistics_during_period') {
+      if (q.get('fresh')) return {};
+      const day = (n) => { const d = new Date(now); d.setHours(0, 0, 0, 0); d.setDate(d.getDate() - n); return d.getTime(); };
+      const out = {'sensor.dcc_sourced_smart_electricity_meter_usage_today': [], 'sensor.thames_water_meter_thames_water_sensor': []};
+      for (let n = 14; n >= 1; n--) out['sensor.dcc_sourced_smart_electricity_meter_usage_today'].push({start: day(n), change: 5 + 3 * Math.sin(n) + (n % 7 < 2 ? 3 : 0)});
+      for (let n = 14; n >= 3; n--) out['sensor.thames_water_meter_thames_water_sensor'].push({start: day(n), change: 260 + 80 * Math.cos(n)});
+      return out;
+    }
     if (m.type === 'history/history_during_period') return {[m.entity_ids[0]]: history};
     return {};
   },
