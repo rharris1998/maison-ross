@@ -80,6 +80,8 @@ const ICONS = {
   stairs: '<path d="M3 21h5v-5h5v-5h5V6h3"/>',
   plus: '<path d="M12 5v14M5 12h14"/>',
   gauge: '<path d="m12 14 4-4"/><path d="M3.34 19a10 10 0 1 1 17.32 0"/>',
+  umbrella: '<path d="M22 12a10.06 10.06 1 0 0-20 0Z"/><path d="M12 12v8a2 2 0 0 0 4 0M12 2v1"/>',
+  bell: '<path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/>',
 };
 const icon = (name, cls = '') => `<svg class="ic ${cls}" viewBox="0 0 24 24" aria-hidden="true">${ICONS[name] || ICONS.home}</svg>`;
 
@@ -367,6 +369,23 @@ header{position:relative;display:flex;align-items:center;gap:14px;margin-bottom:
 .big-ring .ring{width:190px;height:190px;border-width:4px}
 .big-ring .ring .num{font-size:48px}
 
+/* Rain, air chart, hours, door */
+.pill.rain{color:var(--home);background:color-mix(in srgb,var(--home) 14%,var(--card));border-color:color-mix(in srgb,var(--home) 35%,transparent)}
+.chart{display:block;width:100%;height:110px;margin-top:8px;overflow:visible}
+.chart .line{fill:none;stroke:var(--home);stroke-width:2;vector-effect:non-scaling-stroke;stroke-linejoin:round}
+.chart .fill{fill:color-mix(in srgb,var(--home) 16%,transparent);stroke:none}
+.chart .warn,.chart .bad{stroke-width:1;stroke-dasharray:4 4;vector-effect:non-scaling-stroke}
+.chart .warn{stroke:var(--solar);opacity:.6}.chart .bad{stroke:var(--act);opacity:.6}
+.chart-axis{display:flex;justify-content:space-between;font-size:12px;margin-top:6px}
+.chart-empty{font-size:13px;padding:18px 0}
+.hours{display:grid;grid-auto-flow:column;grid-auto-columns:minmax(64px,1fr);gap:8px;overflow-x:auto;padding-bottom:4px}
+.day.wet{background:color-mix(in srgb,var(--home) 14%,var(--tile));border-color:color-mix(in srgb,var(--home) 35%,transparent)}
+.days.week{grid-template-columns:repeat(7,minmax(0,1fr))}
+@media (max-width:720px){.days.week{grid-template-columns:repeat(4,minmax(0,1fr))}}
+.stream{aspect-ratio:16/9}
+.door-info .door-now .num{font-size:48px}
+.door-info .action:first-of-type{margin-top:14px}
+
 @media (prefers-reduced-motion:reduce){*,*::before,*::after{animation:none!important;transition:none!important}}
 `;
 
@@ -378,6 +397,10 @@ class RossHome extends HTMLElement {
     this._sheet = null;          // {kind, ...}
     this._armed = null;          // a risky tile waiting for its second tap
     this._forecast = [];
+    this._hourly = [];
+    this._history = null;      // {at, points: [[ms, value]]}
+    this._lastDoor = undefined; // the doorbell's last activity seen
+    this._touched = 0;         // last tap, so a self-update never reloads mid-use
     this._todo = [];
     this._sig = '';
     this._themePref = (() => { try { return localStorage.getItem('ross-home-theme') || 'auto'; } catch { return 'auto'; } })();
@@ -399,7 +422,9 @@ class RossHome extends HTMLElement {
   disconnectedCallback() {
     clearInterval(this._tick);
     this._tick = null;
-    if (this._unsubForecast) { this._unsubForecast.then((u) => u && u()).catch(() => {}); this._unsubForecast = null; }
+    for (const k of ['_unsubForecast', '_unsubHourly']) if (this[k]) { this[k].then((u) => u && u()).catch(() => {}); this[k] = null; }
+    clearInterval(this._updateTimer);
+    this._updateTimer = null;
   }
 
   _start() {
@@ -410,6 +435,7 @@ class RossHome extends HTMLElement {
       this.shadowRoot.addEventListener('keydown', (e) => { if (e.key === 'Escape' && this._sheet) this._close(); });
     }
     if (!this._tick) this._tick = setInterval(() => this._render(), 15000);
+    if (!this._updateTimer) this._updateTimer = setInterval(() => this._checkForUpdate(), 10 * 60000);
     this._subscribeForecast();
     this._loadTodo();
   }
@@ -419,6 +445,66 @@ class RossHome extends HTMLElement {
     if (!this._hass?.connection || !id || this._unsubForecast) return;
     this._unsubForecast = this._hass.connection.subscribeMessage((msg) => { this._forecast = msg.forecast || []; this._sig = ''; this._render(); },
       {type: 'weather/subscribe_forecast', forecast_type: 'daily', entity_id: id}).catch(() => null);
+    this._unsubHourly = this._hass.connection.subscribeMessage((msg) => { this._hourly = msg.forecast || []; this._sig = ''; this._render(); },
+      {type: 'weather/subscribe_forecast', forecast_type: 'hourly', entity_id: id}).catch(() => null);
+  }
+  // A wall tablet never needs a manual refresh: every ten minutes the panel
+  // asks for its own file, and if HACS has installed a newer release it
+  // reloads, but only while no sheet is open and nobody has touched it for
+  // two minutes.
+  async _checkForUpdate() {
+    if (VERSION === 'dev' || this._sheet || Date.now() - this._touched < 120000) return;
+    try {
+      const url = new URL(import.meta.url);
+      url.search = '';
+      const head = (await (await fetch(url, {cache: 'no-store'})).text()).slice(0, 200);
+      const found = head.match(/Ross Home (v[\w.]+)/)?.[1];
+      if (found && found !== VERSION) location.reload();
+    } catch { /* offline: try again next time */ }
+  }
+  // The purifier's PM2.5 over the last 24 hours, for its sheet; fetched at
+  // most every ten minutes.
+  async _loadHistory() {
+    const id = this._config.pm25;
+    if (!id || (this._history && Date.now() - this._history.at < 600000) || this._historyLoading) return;
+    this._historyLoading = true;
+    try {
+      const start = new Date(Date.now() - 24 * 3600e3).toISOString();
+      const res = await this._hass.callWS({type: 'history/history_during_period', start_time: start, entity_ids: [id], minimal_response: true, no_attributes: true, significant_changes_only: false});
+      const rows = res?.[id] || [];
+      const points = rows.map((r) => [(r.lu ?? r.lc ?? 0) * 1000, Number(r.s)]).filter(([t, v]) => t && Number.isFinite(v));
+      this._history = {at: Date.now(), points};
+      this._sig = '';
+      this._render();
+    } catch { this._history = {at: Date.now(), points: []}; } finally { this._historyLoading = false; }
+  }
+  // The doorbell: a new press opens the front door sheet on every screen
+  // showing the panel, and closes it again after three minutes.
+  _watchDoor() {
+    const act = this._s(this._config.doorbell_activity);
+    if (!act) return;
+    const key = act.state;
+    if (this._lastDoor === undefined) { this._lastDoor = key; return; }
+    if (key === this._lastDoor) return;
+    this._lastDoor = key;
+    const fresh = Date.now() - Date.parse(key) < 3 * 60000;
+    if (act.attributes?.category === 'ding' && fresh) {
+      this._sheet = {kind: 'door', ring: true};
+      clearTimeout(this._doorTimer);
+      this._doorTimer = setTimeout(() => { if (this._sheet?.kind === 'door') this._close(); }, 3 * 60000);
+    }
+  }
+  // When rain is next expected in the coming twelve hours, or that it is
+  // raining now.
+  _rain() {
+    const w = this._s(this._config.weather)?.state;
+    if (/rain|pouring|lightning|hail/.test(w || '')) return {now: true, text: 'Raining now'};
+    const soon = Date.now() + 12 * 3600e3;
+    const hour = this._hourly.find((f) => {
+      const t = Date.parse(f.datetime);
+      return t > Date.now() - 30 * 60000 && t < soon && ((f.precipitation_probability ?? 0) >= 50 || (f.precipitation ?? 0) >= 0.3 || /rain|pouring|lightning|hail/.test(f.condition || ''));
+    });
+    return hour ? {now: false, text: `Rain at ${hhmm(new Date(hour.datetime))}`, at: hour.datetime} : null;
   }
   async _loadTodo() {
     const id = this._config?.todo, s = this._hass?.states[id];
@@ -487,11 +573,12 @@ class RossHome extends HTMLElement {
       const d = s.entity_id.split('.')[0];
       if (d === 'light' || d === 'person' || d === 'update' || d === 'media_player' || d === 'climate') sig += `|${s.entity_id}:${s.state}:${s.attributes?.brightness ?? ''}`;
     }
-    return sig + `|${Object.keys(h.areas || {}).length}`;
+    return sig + `|${Object.keys(h.areas || {}).length}|${this._rain()?.text}|${this._history?.at}`;
   }
   _render(force = false) {
     if (!this._hass || !this._config || !this.shadowRoot.querySelector('.root')) return;
     this._loadTodo();
+    this._watchDoor();
     const now = Date.now(), sig = this._signature(now);
     if (!force && sig === this._sig) return;
     this._sig = sig;
@@ -541,12 +628,17 @@ class RossHome extends HTMLElement {
       <div class="hello"><h1>${greet}${name ? `, ${esc(name)}` : ''}</h1><p>${date}</p></div>
       ${people.length ? `<span class="pill wide people">${avatars}</span>` : ''}
       ${w ? `<span class="pill">${weatherIcon(w.state, night)}<span class="num">${temp === null ? '—' : Math.round(temp)}°</span><span class="dim">${esc(WEATHER_WORDS[w.state] || pretty(w.state))}</span></span>` : ''}
+      ${this._rainPill()}
       <button class="pill wide" data-act="sheet" data-kind="status">${status}</button>
       <button class="pill iconbtn" data-act="theme" title="Theme: ${this._themePref}">${icon(themeIcon)}</button>
       <span class="clock num">${hhmm(now)}</span>
     </header>`;
   }
 
+  _rainPill() {
+    const r = this._rain();
+    return r ? `<button class="pill rain" data-act="sheet" data-kind="weather">${icon('umbrella')}${r.text}</button>` : '';
+  }
   _card(label, note, body, go, noteCls = '') {
     return `<section class="card"><div class="card-h"><span class="label">${label}</span><span class="note ${noteCls}">${note || ''}</span>${go ? `<button class="go" ${go} aria-label="Open">${icon('chevron')}</button>` : ''}</div>${body}</section>`;
   }
@@ -599,7 +691,7 @@ class RossHome extends HTMLElement {
         ${today ? `<div class="hl">High ${Math.round(today.temperature)}°${today.templow != null ? ` · Low ${Math.round(today.templow)}°` : ''}</div>` : ''}</div>
         ${sunChip ? `<span class="chip">${sunChip}</span>` : ''}</div>
       ${days ? `<div class="days">${days}</div>` : ''}`;
-    return this._card('Weather', `${at.humidity != null ? `${Math.round(at.humidity)}% humidity` : ''}${wind}`, body, `data-act="more" data-entity="${w.entity_id}"`);
+    return this._card('Weather', `${at.humidity != null ? `${Math.round(at.humidity)}% humidity` : ''}${wind}`, body, 'data-act="sheet" data-kind="weather"');
   }
 
   _tile({key, ic, name, st, on, tone = 'home', act, entity, kind, armed}) {
@@ -674,11 +766,11 @@ class RossHome extends HTMLElement {
     const recent = Date.now() - Date.parse(act?.state || '') < 15 * 60000;
     const flood = this._s(c.floodlight), motion = this._s(c.motion_alerts);
     const body = `<div class="door-now"><div><div class="num">${whenShort(act?.state)}</div><div class="sub">${kind} · ${ago(act?.state) || 'no recent activity'}</div></div></div>
-      ${cam ? `<button class="snap door-snap ${ok(cam) ? '' : 'off'}" data-act="more" data-entity="${cam.entity_id}" aria-label="Open the front door live view">
+      ${cam ? `<button class="snap door-snap ${ok(cam) ? '' : 'off'}" data-act="sheet" data-kind="door" aria-label="Open the front door">
         <img src="${esc(this._snapUrl(cam))}" alt="" loading="lazy"><span class="cap"><span class="dot ${ok(cam) ? '' : 'red'}"></span>${ok(cam) ? 'Tap for live view' : 'Offline'}</span></button>` : ''}
       <div class="row">${flood ? `<button class="chip ${flood.state === 'on' ? 'amber' : ''}" data-act="toggle" data-entity="${flood.entity_id}">${icon('flood')}Floodlight ${flood.state === 'on' ? 'on' : 'off'}</button>` : ''}
         ${motion ? `<button class="chip ${motion.state === 'on' ? 'ok' : ''}" data-act="toggle" data-entity="${motion.entity_id}">${icon('motion')}Motion alerts ${motion.state === 'on' ? 'on' : 'off'}</button>` : ''}</div>`;
-    return this._card('Front door', recent ? `<span class="t-solar">${kind} just now</span>` : 'Ring doorbell', body, cam ? `data-act="more" data-entity="${cam.entity_id}"` : '');
+    return this._card('Front door', recent ? `<span class="t-solar">${kind} just now</span>` : 'Ring doorbell', body, cam ? 'data-act="sheet" data-kind="door"' : '');
   }
   _camerasCard() {
     const cams = this._config.cameras.filter((cam) => this._s(cam.camera) && cam.camera !== this._config.doorbell);
@@ -705,10 +797,18 @@ class RossHome extends HTMLElement {
   _renderSheet(alerts) {
     const host = this.shadowRoot.querySelector('.sheets');
     if (!this._sheet) { host.innerHTML = ''; return; }
-    const html = this._sheet.kind === 'purifier' ? this._purifierSheet() : this._sheet.kind === 'cameras' ? this._camerasSheet() : this._statusSheet(alerts);
-    const existing = host.querySelector('.sheet');
-    if (existing && existing.dataset.kind === this._sheet.kind) { existing.innerHTML = html; return; }
-    host.innerHTML = `<div class="layer" data-act="close"><div class="sheet" role="dialog" aria-modal="true" data-kind="${this._sheet.kind}">${html}</div></div>`;
+    const kind = this._sheet.kind, existing = host.querySelector('.sheet');
+    if (kind === 'purifier') this._loadHistory();
+    if (kind === 'door') {
+      // The live stream must survive state updates, so only the words change.
+      if (existing && existing.dataset.kind === 'door') { existing.querySelector('.door-info').innerHTML = this._doorInfo(); return; }
+      host.innerHTML = `<div class="layer" data-act="close"><div class="sheet" role="dialog" aria-modal="true" data-kind="door">${this._doorSheet()}</div></div>`;
+      this._mountStream(host.querySelector('.stream'));
+      return;
+    }
+    const html = kind === 'purifier' ? this._purifierSheet() : kind === 'cameras' ? this._camerasSheet() : kind === 'weather' ? this._weatherSheet() : this._statusSheet(alerts);
+    if (existing && existing.dataset.kind === kind) { existing.innerHTML = html; return; }
+    host.innerHTML = `<div class="layer" data-act="close"><div class="sheet" role="dialog" aria-modal="true" data-kind="${kind}">${html}</div></div>`;
   }
   _sheetHead(ic, tone, title, dot, line) {
     return `<div class="sheet-h"><span class="big" style="--c:var(--${tone})">${icon(ic)}</span><div><h2>${title}</h2>
@@ -727,12 +827,78 @@ class RossHome extends HTMLElement {
           <div class="t-${a.tone}" style="font-weight:700">${a.quality ? `Air ${a.quality.toLowerCase()}` : 'No reading'}</div></div>
           <div class="field"><span class="label">Filter life</span><div style="display:flex;justify-content:space-between"><span class="num" style="font-size:24px">${a.filter ?? '—'}<span class="unit">%</span></span>
           <span class="dim" style="font-size:13px;align-self:end">${a.filter !== null && a.filter <= 10 ? 'Order a replacement' : 'Healthy'}</span></div>
-          <div class="bar" style="--c:var(--${a.filter !== null && a.filter <= 10 ? 'solar' : 'ok'})"><i style="width:${Math.max(0, Math.min(100, a.filter ?? 0))}%"></i></div></div></div>
+          <div class="bar" style="--c:var(--${a.filter !== null && a.filter <= 10 ? 'solar' : 'ok'})"><i style="width:${Math.max(0, Math.min(100, a.filter ?? 0))}%"></i></div></div>
+          <div class="field"><span class="label">PM2.5 · last 24 hours</span>${this._airChart()}</div></div>
         <div class="panel"><h3>How it runs</h3><div class="hint">Auto follows the air; Sleep is quiet with the display off.</div>
           <span class="label">Mode</span><div class="seg" style="--c:var(--home);margin-top:8px">${modes.map(([v, l, ic]) => `<button class="${current === v ? 'sel' : ''}" data-act="mode" data-mode="${v}">${icon(ic)}${l}</button>`).join('')}</div>
           <div class="field"><span class="label">Fan speed</span><div class="seg" style="--c:var(--home)">${[1, 2, 3].map((n) => `<button class="${speedSel === n ? 'sel' : ''}" data-act="speed" data-speed="${n}"><span class="num" style="font-size:18px">${n}</span></button>`).join('')}</div></div>
           ${toggle(display, 'screen', 'Display', display?.state === 'on' ? 'Lit' : 'Dark')}${toggle(lock, 'lock', 'Child lock', lock?.state === 'on' ? 'Buttons locked' : 'Buttons work')}
           <button class="action ${a.on ? '' : 'primary'}" style="--c:var(--home)" data-act="power">${icon('power')}${a.on ? 'Turn off' : 'Turn on'}</button></div></div>`;
+  }
+  _doorInfo() {
+    const c = this._config, act = this._s(c.doorbell_activity), flood = this._s(c.floodlight);
+    const kind = act?.attributes?.category === 'ding' ? 'Doorbell rang' : act?.attributes?.category === 'motion' ? 'Motion' : 'Activity';
+    return `<div class="door-now"><div><div class="num">${whenShort(act?.state)}</div><div class="sub">${kind} · ${ago(act?.state) || 'no recent activity'}</div></div></div>
+      <button class="action primary" style="--c:var(--home)" data-act="more" data-entity="${c.doorbell}">${icon('camera')}Open live view with sound</button>
+      ${flood ? `<button class="toggle-row" data-act="toggle" data-entity="${flood.entity_id}"><span class="badge">${icon('flood')}</span><span class="txt"><div class="name">Garden floodlight</div><div class="st">${flood.state === 'on' ? 'On' : 'Off'}</div></span><span class="switch ${flood.state === 'on' ? 'on' : ''}" style="--c:var(--solar)"></span></button>` : ''}
+      <button class="action" data-act="close">Dismiss</button>`;
+  }
+  _doorSheet() {
+    const c = this._config, cam = this._s(c.doorbell), ring = this._sheet?.ring;
+    return this._sheetHead(ring ? 'bell' : 'door', ring ? 'solar' : 'home', ring ? 'Someone’s at the door' : 'Front door', ring ? 'amber' : (ok(cam) ? '' : 'red'),
+      `<b>${ring ? 'Doorbell rang' : ok(cam) ? 'Camera online' : 'Camera offline'}</b><span class="dim">· Ring</span>`) +
+      `<div class="sheet-body"><div class="panel" style="padding:10px"><div class="stream snap"><img src="${esc(this._snapUrl(cam))}" alt=""></div></div>
+        <div class="panel door-info">${this._doorInfo()}</div></div>`;
+  }
+  // Home Assistant's own camera player when the page has loaded it; else a
+  // snapshot that refreshes every five seconds, with live view a tap away.
+  _mountStream(slot) {
+    const cam = this._s(this._config.doorbell);
+    if (!slot || !cam) return;
+    if (customElements.get('ha-camera-stream')) {
+      const player = document.createElement('ha-camera-stream');
+      player.hass = this._hass; player.stateObj = cam; player.muted = true; player.controls = true;
+      player.style.cssText = 'display:block;width:100%;height:100%';
+      slot.replaceChildren(player);
+      return;
+    }
+    const img = slot.querySelector('img');
+    clearInterval(this._streamTimer);
+    this._streamTimer = setInterval(() => {
+      if (!img.isConnected) { clearInterval(this._streamTimer); return; }
+      const pic = this._s(this._config.doorbell)?.attributes?.entity_picture;
+      if (pic && !pic.startsWith('data:')) img.src = `${pic}${pic.includes('?') ? '&' : '?'}t=${Date.now()}`;
+    }, 5000);
+  }
+  _weatherSheet() {
+    const w = this._s(this._config.weather), night = this._s(this._config.sun)?.state === 'below_horizon', r = this._rain();
+    const temp = num({state: w?.attributes?.temperature});
+    const hours = this._hourly.filter((f) => Date.parse(f.datetime) > Date.now() - 30 * 60000).slice(0, 12).map((f) => {
+      const wet = (f.precipitation_probability ?? 0) >= 50 || (f.precipitation ?? 0) >= 0.3;
+      return `<div class="day ${wet ? 'wet' : ''}"><span class="d">${hhmm(new Date(f.datetime))}</span>${weatherIcon(f.condition, new Date(f.datetime).getHours() < 6 || new Date(f.datetime).getHours() >= 20)}
+        <span class="hi">${Math.round(f.temperature)}°</span><span class="rain">${f.precipitation_probability != null ? `${Math.round(f.precipitation_probability)}%` : f.precipitation ? `${(+f.precipitation).toFixed(1)} mm` : ''}</span></div>`;
+    }).join('');
+    const days = this._forecast.slice(0, 7).map((f, i) => `<div class="day"><span class="d">${i === 0 ? 'Today' : new Date(f.datetime).toLocaleDateString('en-GB', {weekday: 'short'})}</span>${weatherIcon(f.condition)}
+        <span class="hi">${Math.round(f.temperature)}°</span><span class="lo">${f.templow != null ? `${Math.round(f.templow)}°` : ''}</span>${f.precipitation ? `<span class="rain">${(+f.precipitation).toFixed(1)} mm</span>` : ''}</div>`).join('');
+    return this._sheetHead('cloud', 'home', 'Weather', r ? 'blue' : '', `<b>${temp === null ? '—' : Math.round(temp)}° · ${esc(WEATHER_WORDS[w?.state] || pretty(w?.state))}</b><span class="dim">· ${r ? r.text : 'No rain in the next 12 hours'}</span>`) +
+      `<div class="panel"><h3>Next 12 hours</h3><div class="hint">Chance of rain under each hour; wet hours are tinted.</div><div class="hours">${hours || '<div class="dim">Hourly forecast loading…</div>'}</div></div>
+       <div class="panel" style="margin-top:14px"><h3>This week</h3><div class="days week">${days}</div></div>`;
+  }
+  _airChart() {
+    const pts = this._history?.points || [], w = 360, h = 110, end = Date.now(), start = end - 24 * 3600e3;
+    if (!this._history) return '<div class="chart-empty dim">Loading the last 24 hours…</div>';
+    if (pts.length < 2) return '<div class="chart-empty dim">Not enough history yet. It fills in over the next day.</div>';
+    const max = Math.max(15, ...pts.map(([, v]) => v)) * 1.15;
+    const x = (t) => ((Math.max(start, t) - start) / (end - start)) * w, y = (v) => h - (v / max) * h;
+    // A step line: each reading holds until the next.
+    let d = '';
+    pts.forEach(([t, v], i) => { d += i === 0 ? `M${x(t).toFixed(1)} ${y(v).toFixed(1)}` : `H${x(t).toFixed(1)}V${y(v).toFixed(1)}`; });
+    d += `H${w}`;
+    const area = `${d}V${h}H${x(pts[0][0]).toFixed(1)}Z`, peak = pts.reduce((a, b) => (b[1] > a[1] ? b : a));
+    const band = (v, cls) => (v < max ? `<line x1="0" x2="${w}" y1="${y(v)}" y2="${y(v)}" class="${cls}"/>` : '');
+    return `<svg class="chart" viewBox="0 0 ${w} ${h}" preserveAspectRatio="none" aria-label="PM2.5 over the last 24 hours, peak ${peak[1]}">
+        ${band(12, 'warn')}${band(35, 'bad')}<path d="${area}" class="fill"/><path d="${d}" class="line"/></svg>
+      <div class="chart-axis dim"><span>24 h ago</span><span>Peak ${peak[1]} at ${hhmm(new Date(peak[0]))}</span><span>Now</span></div>`;
   }
   _camerasSheet() {
     const cams = this._config.cameras.filter((cam) => this._s(cam.camera)), online = cams.filter((cam) => ok(this._s(cam.camera))).length;
@@ -753,11 +919,12 @@ class RossHome extends HTMLElement {
           ${row('globe', 'Remote access', remote?.state === 'on' ? 'Connected through Home Assistant Cloud' : 'Off', remote?.entity_id)}
           ${phone !== null ? row('phone', "Ross's iPhone", `${phone}% battery`, c.phone_battery) : ''}</div></div>`;
   }
-  _close() { this._sheet = null; this._render(true); }
+  _close() { this._sheet = null; clearInterval(this._streamTimer); clearTimeout(this._doorTimer); this._render(true); }
 
   // ---- Actions ------------------------------------------------------------
   _call(domain, service, data) { return this._hass.callService(domain, service, data).catch((e) => console.warn('ross-home', e)); }
   _onClick(e) {
+    this._touched = Date.now();
     const el = e.target.closest('[data-act]');
     if (!el) return;
     const act = el.dataset.act;

@@ -48,13 +48,20 @@ const entities = {'fan.bedroom_purifier': {area_id: 'bedroom'}, 'camera.living_r
   'light.garden_light': {area_id: 'garden'}, 'camera.dining_room_live_view': {area_id: 'dining'}, 'camera.front_door_live_view': {area_id: 'porch'},
   'light.porch': {area_id: 'porch'}, 'light.office_ceiling': {area_id: 'office'}, 'light.office_lamp': {area_id: 'office'}};
 const days = ['sunny', 'partlycloudy', 'rainy', 'cloudy', 'sunny'].map((c, i) => ({datetime: new Date(now + i * 86400e3).toISOString(), condition: c, temperature: [17, 18, 14, 15, 19][i], templow: [10, 11, 9, 8, 10][i], precipitation: c === 'rainy' ? 4.2 : 0}));
+const hours = Array.from({length: 24}, (_, i) => ({datetime: new Date(Math.floor(now / 3600e3) * 3600e3 + (i + 1) * 3600e3).toISOString(), condition: q.get('rain') && i >= 3 && i <= 6 ? 'rainy' : 'partlycloudy',
+  temperature: 15 - i * 0.3, precipitation_probability: q.get('rain') && i >= 3 && i <= 6 ? 80 : 10, precipitation: q.get('rain') && i >= 3 && i <= 6 ? 1.2 : 0}));
+const history = Array.from({length: 60}, (_, i) => ({s: String(Math.max(0, Math.round(3 + 6 * Math.sin(i / 6) + (i > 40 && i < 46 ? 14 : 0)))), lu: (now - (24 * 3600e3) + i * 24 * 60000) / 1000}));
 const todo = q.get('todo') ? [{uid: '1', summary: 'Milk', status: 'needs_action'}, {uid: '2', summary: 'Kajplats bulbs', status: 'needs_action'}] : [];
 let hass;
 const el = document.querySelector('ross-home');
 const push = () => { hass = {...hass, states: {...S}}; el.hass = hass; };
 hass = {states: {...S}, areas, entities, devices: {}, user: {name: 'Ross Harrison'}, themes: {darkMode: true}, config: {version: '2026.9.4'},
-  connection: {subscribeMessage: async (cb) => { setTimeout(() => cb({forecast: days}), 50); return () => {}; }},
-  callWS: async (m) => (m.type === 'todo/item/list' ? {items: todo} : {}),
+  connection: {subscribeMessage: async (cb, msg) => { setTimeout(() => cb({forecast: msg.forecast_type === 'hourly' ? hours : days}), 50); return () => {}; }},
+  callWS: async (m) => {
+    if (m.type === 'todo/item/list') return {items: todo};
+    if (m.type === 'history/history_during_period') return {[m.entity_ids[0]]: history};
+    return {};
+  },
   callService: async (d, s, data) => {
     console.log('service', d, s, JSON.stringify(data));
     const ids = [].concat(data.entity_id || []);
@@ -70,4 +77,5 @@ hass = {states: {...S}, areas, entities, devices: {}, user: {name: 'Ross Harriso
 el.setConfig({});
 el.hass = hass;
 window.__push = push; window.__S = S;
+window.__ding = () => { S['sensor.front_door_last_activity'] = {...S['sensor.front_door_last_activity'], state: new Date().toISOString(), attributes: {category: 'ding', device_class: 'timestamp'}, last_updated: new Date().toISOString()}; push(); };
 </script></body></html>
