@@ -399,7 +399,7 @@ header{position:relative;display:flex;align-items:center;gap:14px;margin-bottom:
 .estat .badge{width:40px;height:40px;border-radius:14px;display:grid;place-items:center;flex:none;color:var(--c);background:color-mix(in srgb,var(--c) 16%,transparent)}
 .estat .badge svg{width:22px;height:22px}
 .estat .v{font-size:26px;line-height:1.1}.estat .v small{font-size:13px;color:var(--dim);margin-left:3px;font-family:inherit}
-.estat .st{font-size:12.5px;color:var(--dim);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.estat>div{min-width:0}.estat .st{font-size:12.5px;color:var(--dim);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .bars{display:flex;gap:6px;align-items:flex-end;height:96px;margin-top:14px}
 .bar{flex:1;display:flex;flex-direction:column;align-items:center;gap:6px;height:100%}
 .bar .col{flex:1;width:100%;display:flex;align-items:flex-end;border-radius:6px;overflow:hidden;background:color-mix(in srgb,var(--c) 7%,transparent)}
@@ -428,6 +428,15 @@ header{position:relative;display:flex;align-items:center;gap:14px;margin-bottom:
 .chart .fill{fill:color-mix(in srgb,var(--home) 16%,transparent);stroke:none}
 .chart .warn,.chart .bad{stroke-width:1;stroke-dasharray:4 4;vector-effect:non-scaling-stroke}
 .chart .warn{stroke:var(--solar);opacity:.6}.chart .bad{stroke:var(--act);opacity:.6}
+.chart-wrap{position:relative;touch-action:pan-y;cursor:crosshair;-webkit-user-select:none;user-select:none}
+.scrub{position:absolute;top:8px;bottom:0;width:0;border-left:1.5px solid var(--text);opacity:.85;pointer-events:none}
+.scrub .dotm{position:absolute;left:-6px;width:11px;height:11px;margin-top:-5px;border-radius:50%;background:var(--home);box-shadow:0 0 0 3px var(--ground)}
+.scrub .tip{position:absolute;bottom:calc(100% + 6px);left:0;transform:translateX(-50%);white-space:nowrap;font-size:13px;line-height:1.35;padding:6px 10px;border-radius:12px;background:color-mix(in srgb,var(--text) 6%,var(--ground));border:1px solid var(--card-line);box-shadow:0 6px 18px rgba(0,0,0,.18);text-align:center}
+.scrub .tip.left{transform:translateX(-100%)}.scrub .tip.right{transform:none}
+.scrub .tip b{font-size:16px}
+.bars{touch-action:pan-y;cursor:pointer}
+.bar.picked .fill{background:var(--c)}.bar.picked .d{color:var(--text);font-weight:700}
+.bars-readout{font-size:13px;margin-top:8px;min-height:18px}
 .chart-axis{display:flex;justify-content:space-between;font-size:12px;margin-top:6px}
 .chart-empty{font-size:13px;padding:18px 0}
 .hours{display:grid;grid-auto-flow:column;grid-auto-columns:minmax(64px,1fr);gap:8px;overflow-x:auto;padding-bottom:4px}
@@ -487,6 +496,8 @@ class RossHome extends HTMLElement {
     if (!this.shadowRoot.querySelector('.root')) {
       this.shadowRoot.innerHTML = `<style>${STYLES}</style><div class="root" data-theme="dark"><div class="glow"></div><div class="main"></div><div class="sheets"></div></div>`;
       this.shadowRoot.addEventListener('click', (e) => this._onClick(e));
+      for (const ev of ['pointerdown', 'pointermove']) this.shadowRoot.addEventListener(ev, (e) => this._scrub(e));
+      this.shadowRoot.addEventListener('pointerleave', (e) => this._scrub(e), true);
       this.shadowRoot.addEventListener('keydown', (e) => { if (e.key === 'Escape' && this._sheet) this._close(); });
     }
     if (!this._tick) this._tick = setInterval(() => this._render(), 15000);
@@ -625,8 +636,11 @@ class RossHome extends HTMLElement {
     const vals = days.map((d) => d.v).filter((v) => v !== null);
     if (vals.length < 2) return `<div class="chart-empty dim">Daily history builds up from today, a bar a day.</div>`;
     const max = Math.max(...vals, 0.001);
-    return `<div class="bars" style="--c:var(--${tone})">${days.map((d) => `<div class="bar ${d.today ? 'today' : ''}" title="${esc(d.day.toLocaleDateString('en-GB', {weekday: 'long', day: 'numeric', month: 'short'}))}: ${d.v === null ? 'no data' : `${d.v.toFixed(digits)} ${unit}`}">
-        <span class="col"><span class="fill" style="height:${d.v === null ? 0 : Math.max(3, (d.v / max) * 100)}%"></span></span><span class="d">${d.day.toLocaleDateString('en-GB', {weekday: 'narrow'})}</span></div>`).join('')}</div>`;
+    const tip = (d) => `${d.today ? 'Today' : d.day.toLocaleDateString('en-GB', {weekday: 'short', day: 'numeric', month: 'short'})} · ${d.v === null ? 'no data' : `${d.v.toFixed(digits)} ${unit}`}`;
+    const last = [...days].reverse().find((d) => d.v !== null);
+    return `<div class="bars" style="--c:var(--${tone})">${days.map((d) => `<div class="bar ${d.today ? 'today' : ''}" data-tip="${esc(tip(d))}">
+        <span class="col"><span class="fill" style="height:${d.v === null ? 0 : Math.max(3, (d.v / max) * 100)}%"></span></span><span class="d">${d.day.toLocaleDateString('en-GB', {weekday: 'narrow'})}</span></div>`).join('')}</div>
+      <div class="bars-readout dim">${last ? esc(tip(last)) : ''}<span class="hint-tap"> · tap a bar</span></div>`;
   }
   // The shared calendar's next two weeks, fetched every ten minutes.
   async _loadEvents() {
@@ -1118,6 +1132,39 @@ class RossHome extends HTMLElement {
     return this._sheetHead('bin', 'ev', 'Bin days', '', next ? `<b>Next: ${binWhen(next)}</b><span class="dim">· reminder on your phone at 7pm the night before</span>` : '<b>No collections found</b>') +
       (rows || '<div class="dim">Nothing in the council calendar for the next four weeks.</div>');
   }
+  // Charts answer a finger or a mouse: along the PM2.5 line it reads out the
+  // time and value under the pointer; on bar charts it reads out the day.
+  _scrub(e) {
+    const path = e.composedPath ? e.composedPath() : [];
+    const bar = path.find((el) => el.classList?.contains('bar'));
+    if (bar && e.type !== 'pointerleave') {
+      const out = bar.parentElement?.nextElementSibling;
+      if (out?.classList.contains('bars-readout')) out.textContent = bar.dataset.tip;
+      for (const b of bar.parentElement.children) b.classList.toggle('picked', b === bar);
+      this._touched = Date.now();
+      return;
+    }
+    const wrap = path.find((el) => el.classList?.contains('chart-wrap'));
+    const layer = this.shadowRoot.querySelector('.chart-wrap .scrub');
+    if (!layer) return;
+    if (!wrap || e.type === 'pointerleave' && e.target === wrap) { if (e.pointerType === 'mouse' || e.type === 'pointerleave') layer.hidden = true; return; }
+    const c = this._chart, svg = wrap.querySelector('svg');
+    if (!c || !svg) return;
+    const r = svg.getBoundingClientRect(), f = Math.min(1, Math.max(0, (e.clientX - r.left) / r.width));
+    const t = c.start + f * (c.end - c.start);
+    let p = c.pts[0];
+    for (const q of c.pts) { if (q[0] <= t) p = q; else break; }
+    if (!p || p[0] > t) { layer.hidden = true; return; }
+    const v = p[1], word = v <= 12 ? 'Good' : v <= 35 ? 'Fair' : 'Poor';
+    layer.hidden = false;
+    layer.style.left = `${f * 100}%`;
+    layer.querySelector('.dotm').style.top = `${(1 - v / c.max) * 100}%`;
+    const tip = layer.querySelector('.tip');
+    tip.innerHTML = `<b class="num">${v}</b> µg/m³ · ${word}<br><span class="dim">${hhmm(new Date(t))}</span>`;
+    tip.classList.toggle('left', f > 0.7);
+    tip.classList.toggle('right', f < 0.3);
+    this._touched = Date.now();
+  }
   _airChart() {
     const pts = this._history?.points || [], w = 360, h = 110, end = Date.now(), start = end - 24 * 3600e3;
     if (!this._history) return '<div class="chart-empty dim">Loading the last 24 hours…</div>';
@@ -1130,8 +1177,10 @@ class RossHome extends HTMLElement {
     d += `H${w}`;
     const area = `${d}V${h}H${x(pts[0][0]).toFixed(1)}Z`, peak = pts.reduce((a, b) => (b[1] > a[1] ? b : a));
     const band = (v, cls) => (v < max ? `<line x1="0" x2="${w}" y1="${y(v)}" y2="${y(v)}" class="${cls}"/>` : '');
-    return `<svg class="chart" viewBox="0 0 ${w} ${h}" preserveAspectRatio="none" aria-label="PM2.5 over the last 24 hours, peak ${peak[1]}">
+    this._chart = {pts, start, end, max};
+    return `<div class="chart-wrap"><svg class="chart" viewBox="0 0 ${w} ${h}" preserveAspectRatio="none" aria-label="PM2.5 over the last 24 hours, peak ${peak[1]}">
         ${band(12, 'warn')}${band(35, 'bad')}<path d="${area}" class="fill"/><path d="${d}" class="line"/></svg>
+        <div class="scrub" hidden><span class="dotm"></span><span class="tip"></span></div></div>
       <div class="chart-axis dim"><span>24 h ago</span><span>Peak ${peak[1]} at ${hhmm(new Date(peak[0]))}</span><span>Now</span></div>`;
   }
   _camerasSheet() {
