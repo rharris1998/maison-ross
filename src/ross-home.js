@@ -495,6 +495,16 @@ class RossHome extends HTMLElement {
 
   _start() {
     requestFonts();
+    // A doorbell notification opens the dashboard with ?door=1: go straight
+    // to the front door live view, then tidy the address bar.
+    try {
+      const url = new URL(location.href);
+      if (url.searchParams.has('door')) {
+        this._openDoor();
+        url.searchParams.delete('door');
+        history.replaceState(history.state, '', url.pathname + url.search + url.hash);
+      }
+    } catch { /* not in a browser */ }
     if (!this.shadowRoot.querySelector('.root')) {
       this.shadowRoot.innerHTML = `<style>${STYLES}</style><div class="root" data-theme="dark"><div class="glow"></div><div class="main"></div><div class="sheets"></div></div>`;
       this.shadowRoot.addEventListener('click', (e) => this._onClick(e));
