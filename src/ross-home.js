@@ -28,6 +28,8 @@ const DEFAULTS = Object.freeze({
   purifier_child_lock: 'switch.core_300s_series_child_lock',
   doorbell: 'camera.front_door_live_view',
   doorbell_activity: 'sensor.front_door_last_activity',
+  // Turned on by an Alexa routine the moment the Ring is pressed.
+  doorbell_press: 'input_boolean.doorbell_pressed',
   floodlight: 'light.garden_light',
   motion_alerts: 'switch.garden_motion_detection',
   cameras: [
@@ -546,7 +548,17 @@ class RossHome extends HTMLElement {
   }
   // The doorbell: a new press opens the front door sheet on every screen
   // showing the panel, and closes it again after three minutes.
+  _openDoor() {
+    this._sheet = {kind: 'door', ring: true};
+    clearTimeout(this._doorTimer);
+    this._doorTimer = setTimeout(() => { if (this._sheet?.kind === 'door') this._close(); }, 3 * 60000);
+  }
   _watchDoor() {
+    const press = this._s(this._config.doorbell_press)?.state;
+    if (press !== undefined) {
+      if (this._lastPress !== undefined && press === 'on' && this._lastPress !== 'on') this._openDoor();
+      this._lastPress = press;
+    }
     const act = this._s(this._config.doorbell_activity);
     if (!act) return;
     const key = act.state;
@@ -554,11 +566,7 @@ class RossHome extends HTMLElement {
     if (key === this._lastDoor) return;
     this._lastDoor = key;
     const fresh = Date.now() - Date.parse(key) < 3 * 60000;
-    if (act.attributes?.category === 'ding' && fresh) {
-      this._sheet = {kind: 'door', ring: true};
-      clearTimeout(this._doorTimer);
-      this._doorTimer = setTimeout(() => { if (this._sheet?.kind === 'door') this._close(); }, 3 * 60000);
-    }
+    if (act.attributes?.category === 'ding' && fresh && this._sheet?.kind !== 'door') this._openDoor();
   }
   // When rain is next expected in the coming twelve hours, or that it is
   // raining now.
@@ -750,7 +758,7 @@ class RossHome extends HTMLElement {
     const h = this._hass, ids = new Set();
     const c = this._config;
     for (const k of ['energy_usage', 'energy_cost', 'water', 'weather', 'sun', 'purifier', 'air_quality', 'pm25', 'filter_life', 'purifier_display', 'purifier_child_lock', 'doorbell',
-      'doorbell_activity', 'floodlight', 'motion_alerts', 'todo', 'backup', 'remote', 'phone_battery']) if (c[k]) ids.add(c[k]);
+      'doorbell_activity', 'doorbell_press', 'floodlight', 'motion_alerts', 'todo', 'backup', 'remote', 'phone_battery']) if (c[k]) ids.add(c[k]);
     for (const cam of c.cameras) { ids.add(cam.camera); ids.add(cam.activity); ids.add(cam.battery); }
     let sig = `${Math.floor(now / 60000)}|${this._themePref}|${this._sheet ? JSON.stringify(this._sheet) : ''}|${this._armed}|${h.user?.name}`;
     for (const id of ids) { const s = h.states[id]; sig += `|${s?.state}:${s?.last_updated}`; }

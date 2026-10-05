@@ -30,6 +30,7 @@ add('sensor.front_door_last_activity', iso(q.get('ding') ? 3 : 48), {category: q
 add('sensor.garden_last_activity', iso(3 * 1440 + 200)); add('sensor.living_room_last_activity', iso(250)); add('sensor.dining_room_last_activity', iso(2 * 1440 + 30));
 add('sensor.front_door_battery', 'unknown', {device_class: 'battery', unit_of_measurement: '%'});
 ['garden', 'living_room', 'dining_room'].forEach((n) => add(`sensor.${n}_battery`, '100', {device_class: 'battery', unit_of_measurement: '%'}));
+add('input_boolean.doorbell_pressed', 'off');
 add('light.garden_light', 'off', {friendly_name: 'Garden Light'});
 add('switch.garden_motion_detection', 'off');
 add('calendar.waste_collection_schedule_london_borough_of_bexley', 'off');
@@ -107,5 +108,6 @@ hass = {states: {...S}, areas, entities, devices: {}, user: {name: 'Ross Harriso
 el.setConfig({});
 el.hass = hass;
 window.__push = push; window.__S = S;
+window.__press = () => { S['input_boolean.doorbell_pressed'] = {...S['input_boolean.doorbell_pressed'], state: 'on', last_updated: new Date().toISOString()}; push(); };
 window.__ding = () => { S['sensor.front_door_last_activity'] = {...S['sensor.front_door_last_activity'], state: new Date().toISOString(), attributes: {category: 'ding', device_class: 'timestamp'}, last_updated: new Date().toISOString()}; push(); };
 </script></body></html>
