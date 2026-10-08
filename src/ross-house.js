@@ -288,6 +288,11 @@ export class HouseView {
     if (!this._mats.has(key)) this._mats.set(key, new THREE.MeshStandardMaterial({color, roughness: 0.82, metalness: 0, ...extra}));
     return this._mats.get(key);
   }
+  // Wall tops read as a crisp outline of the plan; they glow softly after dark.
+  _capMat() {
+    if (!this.capMat) this.capMat = new THREE.MeshStandardMaterial({color: 0xf4f1ea, roughness: 0.9, emissive: 0xdfe6f5, emissiveIntensity: 0});
+    return this.capMat;
+  }
   _box(w, h, d, color, x, y, z, extra) {
     const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), this._mat(color, extra));
     m.position.set(x, y, z);
@@ -299,6 +304,11 @@ export class HouseView {
     const s = this.scene;
     this.hemi = new THREE.HemisphereLight(0xdfe9ff, 0x3a3226, 0.9);
     s.add(this.hemi);
+    // Moonlight: a cool, shadowless fill so the house still reads at night.
+    this.moon = new THREE.DirectionalLight(0xb7c6e6, 0);
+    this.moon.position.set(this.center.x - 6, 18, this.center.z + 8);
+    this.moon.target.position.copy(this.center);
+    s.add(this.moon, this.moon.target);
     const sun = this.sun = new THREE.DirectionalLight(0xfff1dc, 2.4);
     sun.castShadow = true;
     sun.shadow.mapSize.set(1536, 1536);
@@ -366,7 +376,7 @@ export class HouseView {
   _walls(g, poly, h, openings) {
     let area = 0;
     for (let i = 0; i < poly.length; i++) { const [x1, z1] = poly[i], [x2, z2] = poly[(i + 1) % poly.length]; area += x1 * z2 - x2 * z1; }
-    const wallMat = [0, 1, 2, 3, 4, 5].map((i) => (i === 2 ? this._mat(0x7d838c, {roughness: 0.9}) : this._mat(C.wall, {roughness: 0.92})));
+    const wallMat = [0, 1, 2, 3, 4, 5].map((i) => (i === 2 ? this._capMat() : this._mat(C.wall, {roughness: 0.92})));
     const glassMat = this._mat(C.glass, {transparent: true, opacity: 0.32, roughness: 0.08, metalness: 0.1, depthWrite: false});
     for (let i = 0; i < poly.length; i++) {
       const a = new THREE.Vector2(...poly[i]), b = new THREE.Vector2(...poly[(i + 1) % poly.length]);
@@ -879,6 +889,9 @@ export class HouseView {
 
   // ---- Live state ----------------------------------------------------------------
   update(hass, theme) {
+    try { this._update(hass, theme); } catch (e) { console.warn('ross-home house update', e); this.need = true; }
+  }
+  _update(hass, theme) {
     this.hass = hass;
     if (this.failed) return;
     const o = this.o;
@@ -895,14 +908,17 @@ export class HouseView {
     const wet = /rain|pouring|lightning/.test(cond), snow = /snow/.test(cond), dull = wet || snow || /cloud|fog/.test(cond);
     const a = THREE.MathUtils.degToRad(az + (o.north || 0)), e = THREE.MathUtils.degToRad(Math.max(elev, 8));
     this.sun.position.set(this.center.x + Math.sin(a) * Math.cos(e) * 25, Math.sin(e) * 25, this.center.z - Math.cos(a) * Math.cos(e) * 25);
-    this.sun.intensity = night ? 0 : (dusk ? 0.9 : 2.5) * (dull ? 0.45 : 1);
-    this.sun.color.set(dusk ? 0xffb27a : 0xfff1dc);
-    this.hemi.intensity = night ? 0.85 : dull ? 0.75 : 0.95;
-    this.hemi.color.set(night ? 0x6f86b0 : 0xdfe9ff);
-    this.renderer.toneMappingExposure = night ? 1.25 : 1.05;
-    const bg = night ? 'radial-gradient(120% 90% at 50% 20%,#1b2140 0%,#080b16 72%)'
-      : dull ? (theme === 'light' ? 'linear-gradient(#c7cfd8,#9aa5b2)' : 'linear-gradient(#2a3340,#151b24)')
-        : dusk ? 'linear-gradient(#f2b483,#5d6b8a)' : (theme === 'light' ? 'linear-gradient(#cfe3f5,#e9eef3)' : 'linear-gradient(#1c2a3d,#0e141d)');
+    this.sun.intensity = night ? 0 : (dusk ? 1.5 : 2.5) * (dull ? 0.6 : 1);
+    this.sun.color.set(dusk ? 0xffbf8f : 0xfff1dc);
+    this.moon.intensity = night ? 1.1 : dusk ? 0.45 : 0;
+    this.hemi.intensity = night ? 1.35 : dusk ? 1.2 : dull ? 1.0 : 0.95;
+    this.hemi.color.set(night ? 0xaebfe2 : dusk ? 0xe9e2ef : 0xdfe9ff);
+    this.hemi.groundColor.set(night ? 0x3a3a44 : 0x3a3226);
+    this.renderer.toneMappingExposure = night ? 1.4 : dusk ? 1.2 : dull ? 1.12 : 1.05;
+    if (this.capMat) this.capMat.emissiveIntensity = night ? 0.32 : dusk ? 0.14 : 0;
+    const bg = night ? 'radial-gradient(120% 90% at 50% 30%,#2c3a60 0%,#151d33 70%,#0e1424 100%)'
+      : dull ? (theme === 'light' ? 'linear-gradient(#c7cfd8,#9aa5b2)' : 'linear-gradient(#3a4556,#1d2430)')
+        : dusk ? 'linear-gradient(#f2b483,#6a7898)' : (theme === 'light' ? 'linear-gradient(#cfe3f5,#e9eef3)' : 'linear-gradient(#1c2a3d,#0e141d)');
     this.el.style.setProperty('--hv-bg', bg);
     this.rain.visible = wet || snow;
     this.rain.material.color.set(snow ? 0xffffff : 0xbcd3ea);

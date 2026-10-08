@@ -1,4 +1,4 @@
-// 122 Glenview, traced from the estate agent's floorplan (EweMove / Giraffe360).
+// The house, traced from the estate agent's floorplan.
 // Metres. x runs front (street, x=0) to back (garden), z runs along the
 // house from the top of the plan to the bottom. Each room is a polygon of
 // [x, z] points; doors and windows are wall segments [x1, z1, x2, z2].

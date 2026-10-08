@@ -200,7 +200,7 @@ const STYLES = `
   background:radial-gradient(40% 50% at 18% 30%,var(--mood,rgba(56,189,248,.18)),transparent 70%),radial-gradient(35% 45% at 85% 10%,var(--mood2,rgba(141,123,255,.12)),transparent 70%);
   transition:opacity 2s ease}
 .root[data-theme=light] .glow{opacity:.35}
-.root.night{filter:brightness(.82)}
+.root.night::after{content:'';position:fixed;inset:0;background:rgba(0,0,0,.18);pointer-events:none;z-index:14}
 button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:pointer;-webkit-tap-highlight-color:transparent}
 .ic{width:20px;height:20px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;flex:none}
 .wx{width:28px;height:28px;flex:none}

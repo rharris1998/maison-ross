@@ -13,8 +13,8 @@ const snap = (a, b) => 'data:image/svg+xml;utf8,' + encodeURIComponent(`<svg xml
 const S = {};
 const add = (entity_id, state, attributes = {}) => { S[entity_id] = {entity_id, state, attributes, last_changed: iso(5), last_updated: iso(5)}; };
 const day = q.get('day') === '1';
-add('weather.forecast_home', day ? 'sunny' : 'partlycloudy', {temperature: day ? 19.2 : 15.7, humidity: 72, wind_speed: 11, wind_speed_unit: 'km/h', friendly_name: 'Forecast Home'});
-add('sun.sun', day ? 'above_horizon' : 'below_horizon', {elevation: day ? 34 : -14, azimuth: day ? 205 : 290, next_setting: new Date(now + 6 * 3600e3).toISOString(), next_rising: new Date(now + 8 * 3600e3).toISOString()});
+add('weather.forecast_home', q.get('wx') || (day ? 'sunny' : 'partlycloudy'), {temperature: day ? 19.2 : 15.7, humidity: 72, wind_speed: 11, wind_speed_unit: 'km/h', friendly_name: 'Forecast Home'});
+add('sun.sun', day ? 'above_horizon' : 'below_horizon', {elevation: q.get('elev') ? Number(q.get('elev')) : day ? 34 : -14, azimuth: day ? 205 : 290, next_setting: new Date(now + 6 * 3600e3).toISOString(), next_rising: new Date(now + 8 * 3600e3).toISOString()});
 add('person.ross', 'home', {friendly_name: 'Ross'});
 add('person.evie', q.get('evie') || 'not_home', {friendly_name: 'Evie'});
 add('fan.bedroom_purifier', 'on', {preset_modes: ['auto', 'sleep'], preset_mode: 'auto', percentage: null, friendly_name: 'Core 300S Series'});
