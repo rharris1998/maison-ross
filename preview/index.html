@@ -19,7 +19,7 @@ add('person.ross', 'home', {friendly_name: 'Ross'});
 add('person.evie', q.get('evie') || 'not_home', {friendly_name: 'Evie'});
 add('fan.bedroom_purifier', 'on', {preset_modes: ['auto', 'sleep'], preset_mode: 'auto', percentage: null, friendly_name: 'Core 300S Series'});
 add('sensor.core_300s_series_air_quality', 'excellent');
-add('sensor.core_300s_series_pm2_5', q.get('pm') || '1', {unit_of_measurement: 'µg/m³'});
+add('sensor.core_300s_series_pm2_5', q.get('pm') || '1', {unit_of_measurement: 'µg/m³', device_class: 'pm25', friendly_name: 'PM2.5'});
 add('sensor.core_300s_series_filter_lifetime', q.get('filter') || '99', {unit_of_measurement: '%'});
 add('switch.core_300s_series_display', 'on');
 add('switch.core_300s_series_child_lock', 'off');
@@ -63,7 +63,7 @@ const areas = {bedroom: {area_id: 'bedroom', name: 'Bedroom'}, living_room: {are
 const entities = {'fan.bedroom_purifier': {area_id: 'bedroom'}, 'camera.living_room_live_view': {area_id: 'living_room'}, 'camera.garden_live_view': {area_id: 'garden'},
   'light.garden_light': {area_id: 'garden'}, 'camera.dining_room_live_view': {area_id: 'dining'}, 'camera.front_door_live_view': {area_id: 'porch'},
   'light.porch': {area_id: 'porch'}, 'light.office_ceiling': {area_id: 'office'}, 'light.office_lamp': {area_id: 'office'}, 'light.porch_porch_light': {area_id: 'porch'},
-  'binary_sensor.porch_porch_motion_sensor_occupancy': {area_id: 'porch'}, 'sensor.office_temperature': {area_id: 'office'}, 'light.living_lamp': {area_id: 'living_room'}};
+  'binary_sensor.porch_porch_motion_sensor_occupancy': {area_id: 'porch'}, 'sensor.office_temperature': {area_id: 'office'}, 'sensor.core_300s_series_pm2_5': {area_id: 'bedroom'}, 'sensor.core_300s_series_air_quality': {area_id: 'bedroom'}, 'light.living_lamp': {area_id: 'living_room'}};
 const days = ['sunny', 'partlycloudy', 'rainy', 'cloudy', 'sunny'].map((c, i) => ({datetime: new Date(now + i * 86400e3).toISOString(), condition: c, temperature: [17, 18, 14, 15, 19][i], templow: [10, 11, 9, 8, 10][i], precipitation: c === 'rainy' ? 4.2 : 0}));
 const hours = Array.from({length: 24}, (_, i) => ({datetime: new Date(Math.floor(now / 3600e3) * 3600e3 + (i + 1) * 3600e3).toISOString(), condition: q.get('rain') && i >= 3 && i <= 6 ? 'rainy' : 'partlycloudy',
   temperature: 15 - i * 0.3, precipitation_probability: q.get('rain') && i >= 3 && i <= 6 ? 80 : 10, precipitation: q.get('rain') && i >= 3 && i <= 6 ? 1.2 : 0}));

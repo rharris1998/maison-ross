@@ -1235,7 +1235,7 @@ class RossHome extends HTMLElement {
     root.insertBefore(host, root.querySelector('.sheets'));
     const c = this._config;
     this._house = new HouseView(host, {
-      icon, weather: c.weather, sun: c.sun, purifier: c.purifier, pm25: c.pm25, excludeLights: c.exclude_lights,
+      icon, weather: c.weather, sun: c.sun, purifier: c.purifier, pm25: c.pm25, airQuality: c.air_quality, energy: c.energy_usage, excludeLights: c.exclude_lights,
       layout: c.house_layout || {}, hidden: c.house_hidden || [], floor: c.house_floor, // The garden (the back, +x in the plan) faces south.
       north: c.house_north ?? -90,
       describe: () => this._houseText(),

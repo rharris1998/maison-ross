@@ -36,9 +36,39 @@ const css = `
 .pin.edit{border:2px dashed #8d7bff;cursor:grab}
 .pin.drag{cursor:grabbing;z-index:2;box-shadow:0 0 0 8px rgba(141,123,255,.35),0 10px 24px rgba(0,0,0,.45)}
 .pin .rm{position:absolute;top:-6px;right:-6px;width:20px;height:20px;border-radius:50%;background:#ff5d7a;color:#fff;font-size:13px;line-height:20px;text-align:center;font-weight:700}
-.rlabel{position:absolute;left:0;top:0;white-space:nowrap;font-size:12px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;padding:4px 9px;border-radius:999px;
-  background:rgba(16,22,32,.6);color:#e6ebf2;pointer-events:none;backdrop-filter:blur(4px);-webkit-backdrop-filter:blur(4px)}
-.rlabel b{font-weight:800;color:#fbbf24;margin-left:6px;letter-spacing:0}
+.rlabel{position:absolute;left:0;top:0;white-space:nowrap;pointer-events:none;display:flex;align-items:center;gap:8px;padding:5px 6px 5px 12px;border-radius:999px;
+  background:rgba(14,19,30,.72);border:1px solid rgba(255,255,255,.12);color:#e6ebf2;backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);box-shadow:0 8px 22px rgba(0,0,0,.3)}
+.rlabel.bare{padding:4px 12px}
+.rlabel .rv{font-size:22px;font-weight:500;line-height:1;font-variant-numeric:tabular-nums;color:#f4f7fb}
+.rlabel .rv small{font-size:11px;font-weight:700;margin-left:2px;color:#a9b3c2;letter-spacing:.04em}
+.rlabel .rv.ok{color:#5eead4}.rlabel .rv.warn{color:#fbbf24}.rlabel .rv.bad{color:#ff7a90}
+.rlabel .rn{display:flex;flex-direction:column;font-size:11px;font-weight:800;letter-spacing:.12em;text-transform:uppercase;line-height:1.25}
+.rlabel .rn em{font-style:normal;font-weight:600;letter-spacing:.02em;text-transform:none;font-size:11.5px;color:#a9b3c2}
+.rlabel .rl{pointer-events:auto;display:inline-flex;align-items:center;gap:4px;height:30px;padding:0 9px;border-radius:999px;border:1px solid rgba(255,255,255,.14);background:rgba(255,255,255,.06);
+  color:#cdd5e0;font:inherit;font-size:12px;font-weight:800;cursor:pointer}
+.rlabel .rl svg{width:15px;height:15px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+.rlabel .rl.on{background:#fbbf24;border-color:#fde68a;color:#3a2600;box-shadow:0 0 18px rgba(251,191,36,.55)}
+.rlabel.lit{border-color:rgba(251,191,36,.45)}
+.pin.k-light{width:34px;height:34px;margin:-17px 0 0 -17px}.pin.k-light svg{width:17px;height:17px}
+.pin.cam{width:124px;height:auto;margin:-42px 0 0 -62px;border-radius:16px;padding:4px;display:block;text-align:left}
+.pin.cam img{display:block;width:100%;aspect-ratio:16/10;object-fit:cover;border-radius:12px;background:#0d1117}
+.pin.cam .cap{display:flex;align-items:center;gap:6px;padding:5px 5px 2px;font-size:11.5px;font-weight:700;color:#e6ebf2}
+.pin.cam .cap .dot{width:7px;height:7px;border-radius:50%;background:#34d399;flex:none}
+.pin.cam .cap .tm{margin-left:auto;font-weight:600;color:#a9b3c2;font-variant-numeric:tabular-nums}
+.pin.cam.on{background:rgba(16,22,32,.86);color:#e6ebf2;border-color:rgba(56,189,248,.55);box-shadow:0 0 0 4px rgba(56,189,248,.16),0 10px 24px rgba(0,0,0,.4)}
+.pin.cam.off-line .cap .dot{background:#ff5d7a}
+.pin.motion{background:#8d7bff;color:#fff;border-color:#c4b8ff;box-shadow:0 0 0 6px rgba(141,123,255,.25),0 0 24px rgba(141,123,255,.6)}
+.hv-stats{position:absolute;left:calc(env(safe-area-inset-left,0px) + 16px);bottom:calc(env(safe-area-inset-bottom,0px) + 16px);display:flex;gap:8px;flex-wrap:wrap;max-width:calc(100% - 300px);pointer-events:none}
+.hv-stat{display:flex;align-items:center;gap:10px;min-height:52px;padding:6px 14px 6px 8px;border-radius:18px;background:rgba(14,19,30,.72);border:1px solid rgba(255,255,255,.1);color:#eef2f7;backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px)}
+.hv-stat .i{width:36px;height:36px;border-radius:12px;display:grid;place-items:center;background:color-mix(in srgb,var(--c,#94a3b8) 18%,transparent);color:var(--c,#94a3b8)}
+.hv-stat .i svg{width:19px;height:19px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+.hv-stat b{display:block;font-size:18px;font-weight:600;line-height:1.1;font-variant-numeric:tabular-nums}.hv-stat b small{font-size:11px;color:#a9b3c2;margin-left:3px;font-weight:700}
+.hv-stat span.l{display:block;font-size:11px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:#a9b3c2}
+.hv-feed{position:absolute;right:calc(env(safe-area-inset-right,0px) + 16px);bottom:calc(env(safe-area-inset-bottom,0px) + 96px);width:250px;display:flex;flex-direction:column;gap:6px;pointer-events:none}
+.hv-feed div{display:flex;align-items:center;gap:8px;padding:7px 11px;border-radius:12px;background:rgba(14,19,30,.6);border:1px solid rgba(255,255,255,.08);font-size:12.5px;color:#dfe6ef;backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px)}
+.hv-feed div .tm{color:#8d96a8;font-variant-numeric:tabular-nums;font-size:11.5px;flex:none}
+.hv-feed div .d{width:7px;height:7px;border-radius:50%;background:var(--c,#94a3b8);flex:none}
+.hv-feed div .t{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .hv-top{position:absolute;top:calc(env(safe-area-inset-top,0px) + 16px);left:calc(env(safe-area-inset-left,0px) + 16px);right:calc(env(safe-area-inset-right,0px) + 16px);display:flex;align-items:center;gap:10px;flex-wrap:wrap;pointer-events:none}
 .hv-top>*{pointer-events:auto}
 .hv-chip{display:inline-flex;align-items:center;gap:10px;min-height:48px;padding:0 16px;border-radius:999px;background:rgba(16,22,32,.72);color:#eef2f7;border:1px solid rgba(255,255,255,.1);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);font:inherit;font-size:15px}
@@ -71,7 +101,10 @@ const css = `
 .hv-tray .chip svg{width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
 .hv-toast{position:absolute;left:50%;top:80px;transform:translateX(-50%);padding:10px 16px;border-radius:999px;background:rgba(16,22,32,.9);color:#eef2f7;font-size:14px;font-weight:600;pointer-events:none}
 .hv-fail{position:absolute;inset:0;display:grid;place-items:center;text-align:center;padding:32px;color:#cdd5e0}
+@media (max-width:900px){.hv-feed{display:none}.hv-stats{max-width:calc(100% - 32px);bottom:calc(env(safe-area-inset-bottom,0px) + 74px)}}
 @media (max-width:720px){
+  .hv-stats{left:10px;right:10px;gap:6px;flex-wrap:nowrap;overflow-x:auto;pointer-events:auto;scrollbar-width:none}.hv-stats::-webkit-scrollbar{display:none}.hv-stat{flex:none}.hv-stat{min-height:44px;padding:4px 10px 4px 6px;gap:7px;border-radius:14px}.hv-stat .i{width:30px;height:30px;border-radius:10px}.hv-stat b{font-size:15px}.hv-stat span.l{font-size:9.5px}
+  .rlabel .rv{font-size:17px}.rlabel .rn{font-size:9.5px}.rlabel .rn em{display:none}.rlabel .rl{height:26px;padding:0 7px}
   .hv-top{top:calc(env(safe-area-inset-top,0px) + 10px);left:10px;right:10px;gap:8px;flex-wrap:nowrap}
   .hv-chip.title,.hv-chip.sum{display:none}
   .hv-seg button{padding:0 13px;min-height:40px}
@@ -85,6 +118,13 @@ const css = `
 
 const esc = (v) => String(v ?? '').replace(/[&<>"']/g, (c) => ({'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'}[c]));
 const domainOf = (id) => id.split('.')[0];
+const pad = (n) => String(n).padStart(2, '0');
+const hhmmAt = (ms) => { const d = new Date(ms); return `${pad(d.getHours())}:${pad(d.getMinutes())}`; };
+const hhmmNow = () => hhmmAt(Date.now());
+const ago = (iso) => {
+  const m = Math.max(0, Math.round((Date.now() - Date.parse(iso)) / 60000));
+  return m < 1 ? 'just now' : m < 60 ? `${m} min` : m < 1440 ? `${Math.round(m / 60)} h` : `${Math.round(m / 1440)} d`;
+};
 const centroid = (poly) => {
   let a = 0, cx = 0, cz = 0;
   for (let i = 0; i < poly.length; i++) {
@@ -126,12 +166,23 @@ export class HouseView {
         <button class="hv-btn cancel" hidden><span class="lbl">Cancel</span></button>
         <button class="hv-btn close" aria-label="Close">${opts.icon('x')}</button>
       </div>
+      <div class="hv-stats"></div>
+      <div class="hv-feed"></div>
       <div class="hv-wx"></div>
       <div class="hv-room" hidden></div>
       <div class="hv-tray" hidden></div>
     </div>`;
     this.el = host.querySelector('.hv');
     this.pinLayer = host.querySelector('.hv-pins');
+    this.pinLayer.addEventListener('click', (e) => {
+      const b = e.target.closest('[data-roomlights]');
+      if (!b) return;
+      e.stopPropagation();
+      const lights = b.dataset.roomlights.split(',');
+      this.o.onAction(lights.some((id) => this.hass.states[id]?.state === 'on') ? 'lightsOff' : 'lightsOn', lights);
+    });
+    this.feed = [];
+    this.prev = new Map();
     this._wireHud();
     try { this._initThree(); } catch (e) {
       console.warn('ross-home house', e);
@@ -537,13 +588,19 @@ export class HouseView {
       : dom === 'binary_sensor' ? st === 'on' : ['on', 'playing', 'heat', 'cool', 'open', 'unlocked'].includes(st);
     let val = '';
     if (dom === 'sensor') { const n = Number(st); if (Number.isFinite(n)) val = s.attributes?.device_class === 'temperature' ? `${n.toFixed(1)}°` : `${Math.round(n)}%`; }
-    if (dom === 'fan' && this.o.pm25) { const pm = Number(this.hass.states[this.o.pm25]?.state); if (Number.isFinite(pm)) val = `PM ${pm}`; }
-    const alert = dom === 'binary_sensor' && st === 'on' && ['door', 'window'].includes(s.attributes?.device_class);
-    return {on, val, alert, off: st === 'unavailable'};
+    if (dom === 'fan') {
+      const pm = Number(this.hass.states[this.o.pm25]?.state), mode = st !== 'on' ? 'Off' : s.attributes?.preset_mode ? s.attributes.preset_mode.replace(/^./, (c) => c.toUpperCase()) : 'Manual';
+      val = Number.isFinite(pm) && this.o.pm25 ? `PM ${pm} · ${mode}` : mode;
+    }
+    const dc = s.attributes?.device_class, motion = dom === 'binary_sensor' && ['motion', 'occupancy'].includes(dc);
+    if (motion) val = st === 'on' ? 'Motion now' : `Clear · ${ago(s.last_changed)}`;
+    if (dom === 'binary_sensor' && ['door', 'window'].includes(dc)) val = st === 'on' ? 'Open' : 'Closed';
+    const alert = dom === 'binary_sensor' && st === 'on' && ['door', 'window'].includes(dc);
+    return {on: motion ? false : on, motion: motion && st === 'on', val, alert, off: st === 'unavailable'};
   }
   _syncPins() {
     if (!this.hass || this.failed) return;
-    const list = this._pinList(), seen = new Set();
+    const list = this._pinList(), seen = new Set(), wide = this.el.clientWidth >= 900;
     for (const p of list) {
       const s = this.hass.states[p.id];
       let el = this.pins.get(p.id)?.el;
@@ -555,17 +612,54 @@ export class HouseView {
         this._wirePin(el);
       }
       const st = this._pinState(s), name = s.attributes?.friendly_name || p.id;
-      el.className = `pin k-${domainOf(p.id)}${st.on ? ' on' : ''}${st.alert ? ' alert' : ''}${st.off ? ' off-line' : ''}${this.editing ? ' edit' : ''}`;
+      // On wider screens cameras show a live snapshot card instead of an icon.
+      const card = domainOf(p.id) === 'camera' && wide && s.attributes?.entity_picture;
+      el.className = `pin k-${domainOf(p.id)}${card ? ' cam' : ''}${st.on ? ' on' : ''}${st.motion ? ' motion' : ''}${st.alert ? ' alert' : ''}${st.off ? ' off-line' : ''}${this.editing ? ' edit' : ''}`;
       el.title = name;
       el.setAttribute('aria-label', name);
-      const html = `${this.o.icon(this._pinIcon(s))}${st.val ? `<span class="pv">${esc(st.val)}</span>` : ''}${this.editing ? '<span class="rm" data-rm="1">×</span>' : ''}`;
+      let html;
+      if (card) {
+        const pic = s.attributes.entity_picture, src = pic.startsWith('data:') ? pic : `${pic}${pic.includes('?') ? '&' : '?'}t=${Math.floor(Date.now() / 60000)}`;
+        const short = name.replace(/\s*(live view|camera)$/i, '');
+        html = `<img src="${esc(src)}" alt="" draggable="false"><span class="cap"><span class="dot"></span>${esc(short)}<span class="tm">${esc(hhmmNow())}</span></span>${this.editing ? '<span class="rm" data-rm="1">×</span>' : ''}`;
+      } else html = `${this.o.icon(this._pinIcon(s))}${st.val ? `<span class="pv">${esc(st.val)}</span>` : ''}${this.editing ? '<span class="rm" data-rm="1">×</span>' : ''}`;
       if (el._html !== html) { el.innerHTML = html; el._html = html; }
       el.style.display = p.f === this.floorId ? '' : 'none';
       this.pins.set(p.id, {el, p});
       seen.add(p.id);
     }
     for (const [id, v] of this.pins) if (!seen.has(id)) { v.el.remove(); this.pins.delete(id); }
+    this._syncGlows(list);
     this.need = true;
+  }
+  // A soft glow at the ceiling over each light that is on, like a lit bulb.
+  _syncGlows(list) {
+    if (!this._glowTex) {
+      const c = document.createElement('canvas');
+      c.width = c.height = 128;
+      const g = c.getContext('2d'), grd = g.createRadialGradient(64, 64, 0, 64, 64, 64);
+      grd.addColorStop(0, 'rgba(255,248,230,1)'); grd.addColorStop(0.18, 'rgba(255,214,150,.9)'); grd.addColorStop(0.5, 'rgba(255,170,80,.25)'); grd.addColorStop(1, 'rgba(255,160,60,0)');
+      g.fillStyle = grd; g.fillRect(0, 0, 128, 128);
+      this._glowTex = new THREE.CanvasTexture(c);
+      this._glowTex.colorSpace = THREE.SRGBColorSpace;
+      this.glows = new Map();
+    }
+    const want = new Set();
+    for (const p of list) {
+      if (domainOf(p.id) !== 'light' || this.hass.states[p.id]?.state !== 'on' || /garden|flood/.test(p.id) && p.x > HOUSE.footprint.w) continue;
+      want.add(p.id);
+      let sp = this.glows.get(p.id);
+      if (!sp) {
+        sp = new THREE.Sprite(new THREE.SpriteMaterial({map: this._glowTex, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending}));
+        this.scene.add(sp);
+        this.glows.set(p.id, sp);
+      }
+      const fl = HOUSE.floors.find((f) => f.id === p.f);
+      sp.position.set(p.x, Math.min(CUT, fl?.height || 2.4) - 0.05, p.z);
+      sp.scale.setScalar(1.5);
+      sp.visible = p.f === this.floorId;
+    }
+    for (const [id, sp] of this.glows) if (!want.has(id)) { this.scene.remove(sp); sp.material.dispose(); this.glows.delete(id); }
   }
   _syncLabels() {
     if (!this.hass || this.failed) return;
@@ -574,8 +668,13 @@ export class HouseView {
       const key = `${this.floorId}:${r.room.id}`;
       let el = this.labels.get(key)?.el;
       if (!el) { el = document.createElement('div'); el.className = 'rlabel'; this.pinLayer.prepend(el); }
-      const temp = this._roomTemp(r.room);
-      const html = `${esc(r.room.name)}${temp ? `<b>${esc(temp)}</b>` : ''}`;
+      const rd = this._roomReadings(r.room), [main, second] = rd;
+      const lights = this._roomEntities(r.room).filter((id) => domainOf(id) === 'light' && !(this.o.excludeLights || []).includes(id));
+      const on = lights.filter((id) => this.hass.states[id].state === 'on').length;
+      el.className = `rlabel${on ? ' lit' : ''}${!main && !lights.length ? ' bare' : ''}`;
+      const html = `${main ? `<span class="rv ${main.tone || ''}">${esc(main.big)}<small>${esc(main.unit)}</small></span>` : ''}
+        <span class="rn">${esc(r.room.name)}${main?.word || second ? `<em>${esc([main?.word, second && `${second.big}${second.unit === '°' ? '°' : ` ${second.unit}`}`].filter(Boolean).join(' · '))}</em>` : ''}</span>
+        ${lights.length ? `<button class="rl ${on ? 'on' : ''}" data-roomlights="${esc(lights.join(','))}" aria-label="${esc(r.room.name)} lights">${this.o.icon('bulb')}${on}/${lights.length}</button>` : ''}`;
       if (el._html !== html) { el.innerHTML = html; el._html = html; }
       this.labels.set(key, {el, r});
       seen.add(key);
@@ -584,6 +683,24 @@ export class HouseView {
   }
   _roomEntities(room) {
     return Object.keys(this.hass.states).filter((id) => (room.area || []).includes(this._areaOf(id)));
+  }
+  // What a room's tag shows without a tap: temperature, air quality,
+  // humidity, CO2, whichever sensors the room has, the first one large.
+  _roomReadings(room) {
+    const n = (s) => (s && Number.isFinite(Number(s.state)) ? Number(s.state) : null);
+    const ents = this._roomEntities(room).map((id) => this.hass.states[id]).filter((x) => x.entity_id.startsWith('sensor.'));
+    const by = (dc) => ents.find((x) => x.attributes?.device_class === dc && n(x) !== null);
+    const out = [], t = by('temperature'), pm = by('pm25'), hum = by('humidity'), co2 = by('carbon_dioxide');
+    const aq = ents.find((x) => /air_quality/.test(x.entity_id) && n(x) === null && !['unknown', 'unavailable'].includes(x.state));
+    if (t) out.push({big: n(t).toFixed(1), unit: '°'});
+    if (pm) {
+      const v = n(pm);
+      out.push({big: String(Math.round(v)), unit: 'PM2.5', tone: v <= 12 ? 'ok' : v <= 35 ? 'warn' : 'bad',
+        word: aq ? String(aq.state).replaceAll('_', ' ').replace(/^./, (c) => c.toUpperCase()) : v <= 12 ? 'Good air' : v <= 35 ? 'Fair air' : 'Poor air'});
+    }
+    if (hum) out.push({big: String(Math.round(n(hum))), unit: '%', tone: n(hum) > 65 ? 'warn' : ''});
+    if (co2) out.push({big: String(Math.round(n(co2))), unit: 'ppm', tone: n(co2) > 1200 ? 'bad' : n(co2) > 900 ? 'warn' : ''});
+    return out;
   }
   _roomTemp(room) {
     const s = this._roomEntities(room).map((id) => this.hass.states[id]).find((x) => x.attributes?.device_class === 'temperature' && Number.isFinite(Number(x.state)));
@@ -630,6 +747,8 @@ export class HouseView {
       this.layout[id] = [this.floorId, +pt.x.toFixed(2), +pt.z.toFixed(2)];
       const v = this.pins.get(id);
       if (v) v.p = {id, f: this.floorId, x: pt.x, z: pt.z};
+      const sp = this.glows?.get(id);
+      if (sp) sp.position.set(pt.x, sp.position.y, pt.z);
       this.need = true;
     });
     el.addEventListener('pointerup', async () => {
@@ -778,10 +897,10 @@ export class HouseView {
     this.sun.position.set(this.center.x + Math.sin(a) * Math.cos(e) * 25, Math.sin(e) * 25, this.center.z - Math.cos(a) * Math.cos(e) * 25);
     this.sun.intensity = night ? 0 : (dusk ? 0.9 : 2.5) * (dull ? 0.45 : 1);
     this.sun.color.set(dusk ? 0xffb27a : 0xfff1dc);
-    this.hemi.intensity = night ? 0.5 : dull ? 0.75 : 0.95;
+    this.hemi.intensity = night ? 0.85 : dull ? 0.75 : 0.95;
     this.hemi.color.set(night ? 0x6f86b0 : 0xdfe9ff);
     this.renderer.toneMappingExposure = night ? 1.25 : 1.05;
-    const bg = night ? 'radial-gradient(120% 90% at 50% 20%,#18233a 0%,#0a0f19 70%)'
+    const bg = night ? 'radial-gradient(120% 90% at 50% 20%,#1b2140 0%,#080b16 72%)'
       : dull ? (theme === 'light' ? 'linear-gradient(#c7cfd8,#9aa5b2)' : 'linear-gradient(#2a3340,#151b24)')
         : dusk ? 'linear-gradient(#f2b483,#5d6b8a)' : (theme === 'light' ? 'linear-gradient(#cfe3f5,#e9eef3)' : 'linear-gradient(#1c2a3d,#0e141d)');
     this.el.style.setProperty('--hv-bg', bg);
@@ -799,8 +918,58 @@ export class HouseView {
     }
     this._syncPins();
     this._syncLabels();
+    this._renderStats();
+    this._trackFeed();
     if (this.roomOpen) this._renderRoom();
     this.need = true;
+  }
+
+  // The strip along the bottom: the numbers worth seeing at a glance.
+  _renderStats() {
+    const h = this.hass, o = this.o, n = (id) => { const v = Number(h.states[id]?.state); return Number.isFinite(v) ? v : null; };
+    const chips = [];
+    const pm = n(o.pm25);
+    if (pm !== null) {
+      const aq = h.states[o.airQuality]?.state, word = aq && !['unknown', 'unavailable'].includes(aq) ? aq.replaceAll('_', ' ').replace(/^./, (c) => c.toUpperCase()) : pm <= 12 ? 'Good' : pm <= 35 ? 'Fair' : 'Poor';
+      chips.push({c: pm <= 12 ? '#34d399' : pm <= 35 ? '#fbbf24' : '#ff5d7a', i: 'leaf', v: `${pm}<small>µg</small>`, l: `Air · ${word}`});
+    }
+    const lights = Object.keys(h.states).filter((id) => domainOf(id) === 'light' && !(o.excludeLights || []).includes(id));
+    const lit = lights.filter((id) => h.states[id].state === 'on').length;
+    chips.push({c: '#fbbf24', i: 'bulb', v: `${lit}<small>/${lights.length}</small>`, l: 'Lights on'});
+    const motion = Object.values(h.states).filter((x) => x.entity_id.startsWith('binary_sensor.') && ['motion', 'occupancy'].includes(x.attributes?.device_class));
+    if (motion.length) chips.push({c: '#8d7bff', i: 'motion', v: `${motion.filter((x) => x.state === 'on').length}`, l: 'Motion'});
+    const kwh = n(o.energy);
+    if (kwh !== null) chips.push({c: '#fbbf24', i: 'bolt', v: `${kwh.toFixed(1)}<small>kWh</small>`, l: 'Today'});
+    const html = chips.map((x) => `<div class="hv-stat" style="--c:${x.c}"><span class="i">${o.icon(x.i)}</span><span><b>${x.v}</b><span class="l">${esc(x.l)}</span></span></div>`).join('');
+    const box = this.el.querySelector('.hv-stats');
+    if (box._html !== html) { box.innerHTML = html; box._html = html; }
+    box.hidden = !!this.roomOpen || this.editing;
+  }
+  // Recent happenings on the pinned devices: lights, motion, doors.
+  _trackFeed() {
+    const h = this.hass, watch = [...this.pins.keys()].filter((id) => ['light', 'binary_sensor', 'fan', 'lock', 'cover'].includes(domainOf(id)));
+    const text = (s) => {
+      const dom = domainOf(s.entity_id), dc = s.attributes?.device_class, name = (s.attributes?.friendly_name || s.entity_id).replace(/\s*(occupancy|motion sensor)$/i, '');
+      if (dom === 'binary_sensor' && ['motion', 'occupancy'].includes(dc)) return {t: `${name}: ${s.state === 'on' ? 'motion' : 'clear'}`, c: '#8d7bff'};
+      if (dom === 'binary_sensor') return {t: `${name} ${s.state === 'on' ? 'opened' : 'closed'}`, c: '#ff5d7a'};
+      if (dom === 'light') return {t: `${name} ${s.state === 'on' ? 'on' : 'off'}`, c: '#fbbf24'};
+      return {t: `${name}: ${String(s.state).replaceAll('_', ' ')}`, c: '#34d399'};
+    };
+    if (!this.feed.length && !this._seeded) {
+      this._seeded = true;
+      this.feed = watch.map((id) => h.states[id]).filter((x) => x && !['unknown', 'unavailable'].includes(x.state))
+        .sort((a, b) => Date.parse(b.last_changed) - Date.parse(a.last_changed)).slice(0, 5)
+        .map((x) => ({at: Date.parse(x.last_changed), ...text(x)}));
+    }
+    for (const id of watch) {
+      const s = h.states[id], before = this.prev.get(id);
+      if (before !== undefined && s && before !== s.state && !['unknown', 'unavailable'].includes(s.state)) this.feed.unshift({at: Date.now(), ...text(s)});
+      if (s) this.prev.set(id, s.state);
+    }
+    this.feed = this.feed.slice(0, 5);
+    const html = this.feed.map((f) => `<div style="--c:${f.c}"><span class="tm">${esc(hhmmAt(f.at))}</span><span class="d"></span><span class="t">${esc(f.t)}</span></div>`).join('');
+    const box = this.el.querySelector('.hv-feed');
+    if (box._html !== html) { box.innerHTML = html; box._html = html; }
   }
 
   _loop(t) {
@@ -837,7 +1006,7 @@ export class HouseView {
     const height = HOUSE.floors.find((f) => f.id === this.floorId)?.height || 2.4;
     for (const [, {el, p}] of this.pins) if (p.f === this.floorId) put(el, p.x, Math.min(1.1, height * 0.5), p.z);
     for (const [, {el, r}] of this.labels) {
-      put(el, r.c[0], 0.05, r.c[1]);
+      put(el, r.c[0], CUT + 0.25, r.c[1]);
       el.style.transform += ' translate(-50%,-50%)';
     }
   }
