@@ -23,7 +23,7 @@ const css = `
 .hv{position:fixed;inset:0;z-index:15;overflow:hidden;color:var(--text);font-family:inherit;background:var(--hv-bg,#0b1018);transition:background 1.2s}
 .hv canvas{position:absolute;inset:0;width:100%;height:100%;display:block;touch-action:none}
 .hv-pins{position:absolute;inset:0;pointer-events:none}
-.pin{position:absolute;left:0;top:0;width:44px;height:44px;margin:-22px 0 0 -22px;border-radius:50%;display:grid;place-items:center;pointer-events:auto;cursor:pointer;
+.pin{-webkit-touch-callout:none;-webkit-user-select:none;user-select:none;position:absolute;left:0;top:0;width:44px;height:44px;margin:-22px 0 0 -22px;border-radius:50%;display:grid;place-items:center;pointer-events:auto;cursor:pointer;
   border:1.5px solid rgba(255,255,255,.18);background:rgba(16,22,32,.78);color:#dfe6ef;backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px);
   box-shadow:0 6px 16px rgba(0,0,0,.35);transition:background .3s,color .3s,box-shadow .3s;touch-action:none;padding:0;font:inherit}
 .pin svg{width:22px;height:22px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
@@ -34,7 +34,7 @@ const css = `
 .pin.off-line{opacity:.45}
 .pin .pv{position:absolute;top:100%;margin-top:4px;left:50%;transform:translateX(-50%);white-space:nowrap;font-size:12px;font-weight:700;padding:2px 7px;border-radius:999px;background:rgba(16,22,32,.82);color:#eef2f7}
 .pin.edit{border:2px dashed #8d7bff;cursor:grab}
-.pin.edit.drag{cursor:grabbing;box-shadow:0 0 0 8px rgba(141,123,255,.35),0 10px 24px rgba(0,0,0,.45)}
+.pin.drag{cursor:grabbing;z-index:2;box-shadow:0 0 0 8px rgba(141,123,255,.35),0 10px 24px rgba(0,0,0,.45)}
 .pin .rm{position:absolute;top:-6px;right:-6px;width:20px;height:20px;border-radius:50%;background:#ff5d7a;color:#fff;font-size:13px;line-height:20px;text-align:center;font-weight:700}
 .rlabel{position:absolute;left:0;top:0;white-space:nowrap;font-size:12px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;padding:4px 9px;border-radius:999px;
   background:rgba(16,22,32,.6);color:#e6ebf2;pointer-events:none;backdrop-filter:blur(4px);-webkit-backdrop-filter:blur(4px)}
@@ -589,39 +589,63 @@ export class HouseView {
     const s = this._roomEntities(room).map((id) => this.hass.states[id]).find((x) => x.attributes?.device_class === 'temperature' && Number.isFinite(Number(x.state)));
     return s ? `${Number(s.state).toFixed(1)}°` : '';
   }
+  // Pins: tap to use, press and hold to pick up and drag to a new spot (it
+  // saves when you let go), or hold without moving for the device's details.
+  // In placement mode a pin moves straight away.
   _wirePin(el) {
-    let start = null, timer = null, dragging = false;
+    let start = null, timer = null, lifted = false, moved = false;
+    const lift = () => {
+      lifted = true;
+      el.classList.add('drag');
+      this.controls.enabled = false;
+      navigator.vibrate?.(15);
+    };
+    const drop = () => {
+      el.classList.remove('drag');
+      this.controls.enabled = true;
+      lifted = false;
+    };
     el.addEventListener('pointerdown', (e) => {
       e.stopPropagation();
       const id = el.dataset.pin;
-      if (this.editing) {
-        if (e.target.dataset.rm) { this._removePin(id); return; }
-        dragging = true;
-        el.classList.add('drag');
-        el.setPointerCapture(e.pointerId);
-        this.controls.enabled = false;
-        return;
-      }
-      start = {x: e.clientX, y: e.clientY, t: Date.now()};
-      timer = setTimeout(() => { timer = null; start = null; this.o.onAction('more', id); }, 550);
+      if (this.editing && e.target.dataset.rm) { this._removePin(id); return; }
+      el.setPointerCapture(e.pointerId);
+      start = {x: e.clientX, y: e.clientY};
+      moved = false;
+      if (this.editing) lift();
+      else timer = setTimeout(() => { timer = null; lift(); }, 420);
     });
     el.addEventListener('pointermove', (e) => {
-      if (!dragging) return;
+      if (!start) return;
+      if (!lifted) {
+        // A finger that wanders before the hold completes is a slip, not a tap.
+        if (Math.hypot(e.clientX - start.x, e.clientY - start.y) > 10 && timer) { clearTimeout(timer); timer = null; start = null; }
+        return;
+      }
+      if (!moved && Math.hypot(e.clientX - start.x, e.clientY - start.y) < 4) return;
       const pt = this._floorPoint(e.clientX, e.clientY);
       if (!pt) return;
+      moved = true;
       const id = el.dataset.pin;
       this.layout[id] = [this.floorId, +pt.x.toFixed(2), +pt.z.toFixed(2)];
       const v = this.pins.get(id);
       if (v) v.p = {id, f: this.floorId, x: pt.x, z: pt.z};
       this.need = true;
     });
-    const up = () => {
-      if (dragging) { dragging = false; el.classList.remove('drag'); this.controls.enabled = true; return; }
-      if (timer) { clearTimeout(timer); timer = null; }
-      if (start) { start = null; this._tapPin(el.dataset.pin); }
-    };
-    el.addEventListener('pointerup', up);
-    el.addEventListener('pointercancel', () => { if (timer) clearTimeout(timer); start = null; dragging = false; el.classList.remove('drag'); this.controls.enabled = true; });
+    el.addEventListener('pointerup', async () => {
+      const id = el.dataset.pin;
+      if (timer) { clearTimeout(timer); timer = null; if (start) { start = null; this._tapPin(id); } return; }
+      start = null;
+      if (!lifted) return;
+      drop();
+      if (this.editing) return;
+      if (!moved) { this.o.onAction('more', id); return; }
+      // Moved outside placement mode: save straight away.
+      const res = await this.o.onAction('saveLayout', {layout: this.layout, hidden: this.hidden});
+      this._toast(res?.ok ? `${this.hass.states[id]?.attributes?.friendly_name || 'Device'} moved` : 'Couldn\'t save the new spot');
+    });
+    el.addEventListener('pointercancel', () => { if (timer) clearTimeout(timer); timer = null; start = null; if (lifted) drop(); });
+    el.addEventListener('contextmenu', (e) => e.preventDefault());
   }
   _tapPin(id) {
     const dom = domainOf(id);
@@ -713,7 +737,7 @@ export class HouseView {
     const placed = new Set(this._pinList().map((p) => p.id));
     const spare = Object.keys(this.hass.states).filter((id) => !placed.has(id) && this._pinnable(id, false))
       .sort((a, b) => PIN_DOMAINS.indexOf(domainOf(a)) - PIN_DOMAINS.indexOf(domainOf(b)) || a.localeCompare(b)).slice(0, 60);
-    tray.innerHTML = `<div class="hint">Drag pins to where things really are. Tap × to remove one, or add a device from below. Then tap Save.</div>
+    tray.innerHTML = `<div class="hint">Drag pins to where things really are (you can also press and hold a pin any time). Tap × to remove one, or add a device from below. Then tap Save.</div>
       <div class="chips">${spare.map((id) => `<button class="chip" data-add="${esc(id)}">${this.o.icon(this._pinIcon(this.hass.states[id]))}${esc(this.hass.states[id].attributes?.friendly_name || id)}</button>`).join('') || '<span class="hint">Every device is already on the plan.</span>'}</div>`;
     tray.querySelectorAll('[data-add]').forEach((b) => {
       b.onclick = () => {

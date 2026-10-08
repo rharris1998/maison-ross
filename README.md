@@ -64,7 +64,7 @@ and devices are pinned where they are: tap a light to toggle it (hold for its
 details), a camera for its live view, the purifier for its sheet, or a room for
 everything in it.
 
-*Place devices* lets you drag pins into place, remove them or add more from the
+Press and hold any pin to pick it up and drag it to the right spot (it saves when you let go; a hold without moving opens its details). *Place devices* also lets you drag pins into place, remove them or add more from the
 tray; *Save* writes the layout into this card's settings (`house_layout`,
 `house_hidden`) so every screen sees it. Other options:
 
