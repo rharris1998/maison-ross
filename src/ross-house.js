@@ -39,7 +39,7 @@ const css = `
 .rlabel{position:absolute;left:0;top:0;white-space:nowrap;font-size:12px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;padding:4px 9px;border-radius:999px;
   background:rgba(16,22,32,.6);color:#e6ebf2;pointer-events:none;backdrop-filter:blur(4px);-webkit-backdrop-filter:blur(4px)}
 .rlabel b{font-weight:800;color:#fbbf24;margin-left:6px;letter-spacing:0}
-.hv-top{position:absolute;top:16px;left:16px;right:16px;display:flex;align-items:center;gap:10px;flex-wrap:wrap;pointer-events:none}
+.hv-top{position:absolute;top:calc(env(safe-area-inset-top,0px) + 16px);left:calc(env(safe-area-inset-left,0px) + 16px);right:calc(env(safe-area-inset-right,0px) + 16px);display:flex;align-items:center;gap:10px;flex-wrap:wrap;pointer-events:none}
 .hv-top>*{pointer-events:auto}
 .hv-chip{display:inline-flex;align-items:center;gap:10px;min-height:48px;padding:0 16px;border-radius:999px;background:rgba(16,22,32,.72);color:#eef2f7;border:1px solid rgba(255,255,255,.1);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);font:inherit;font-size:15px}
 .hv-chip b{font-weight:700}.hv-chip .dim{color:#a3acbb}
@@ -50,10 +50,10 @@ const css = `
 .hv-btn svg{width:20px;height:20px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
 .hv-btn.primary{background:#8d7bff;border-color:#8d7bff;color:#fff}
 .hv-spacer{flex:1}
-.hv-wx{position:absolute;right:20px;bottom:18px;text-align:right;color:#eef2f7;text-shadow:0 2px 12px rgba(0,0,0,.5);pointer-events:none}
+.hv-wx{position:absolute;right:calc(env(safe-area-inset-right,0px) + 20px);bottom:calc(env(safe-area-inset-bottom,0px) + 18px);text-align:right;color:#eef2f7;text-shadow:0 2px 12px rgba(0,0,0,.5);pointer-events:none}
 .hv-wx .t{font-size:34px;font-weight:500;line-height:1}.hv-wx .t small{font-size:16px;margin-left:6px;font-weight:600}
 .hv-wx .s{font-size:13px;color:#cdd5e0;margin-top:4px}
-.hv-room{position:absolute;left:16px;bottom:16px;width:min(360px,calc(100% - 32px));max-height:55%;overflow:auto;padding:16px;border-radius:24px;background:rgba(16,22,32,.86);color:#eef2f7;
+.hv-room{position:absolute;left:calc(env(safe-area-inset-left,0px) + 16px);bottom:calc(env(safe-area-inset-bottom,0px) + 16px);width:min(360px,calc(100% - 32px));max-height:55%;overflow:auto;padding:16px;border-radius:24px;background:rgba(16,22,32,.86);color:#eef2f7;
   border:1px solid rgba(255,255,255,.1);backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);box-shadow:0 18px 40px rgba(0,0,0,.4)}
 .hv-room h3{margin:0;font-size:20px;font-weight:600;display:flex;align-items:center;gap:10px}
 .hv-room h3 .x{margin-left:auto}
@@ -64,14 +64,23 @@ const css = `
 .hv-row.on .i{background:#fbbf24;color:#3a2600}
 .hv-row .n{flex:1;min-width:0}.hv-row .n div:first-child{font-weight:700;font-size:15px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .hv-row .n div:last-child{font-size:12.5px;color:#a3acbb}
-.hv-tray{position:absolute;left:16px;right:16px;bottom:16px;padding:12px;border-radius:22px;background:rgba(16,22,32,.88);border:1px solid rgba(255,255,255,.1);color:#eef2f7;backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px)}
+.hv-tray{position:absolute;left:calc(env(safe-area-inset-left,0px) + 16px);right:calc(env(safe-area-inset-right,0px) + 16px);bottom:calc(env(safe-area-inset-bottom,0px) + 16px);padding:12px;border-radius:22px;background:rgba(16,22,32,.88);border:1px solid rgba(255,255,255,.1);color:#eef2f7;backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px)}
 .hv-tray .hint{font-size:13px;color:#a3acbb;margin:0 4px 8px}
 .hv-tray .chips{display:flex;gap:8px;overflow-x:auto;padding-bottom:2px}
 .hv-tray .chip{flex:none;display:inline-flex;align-items:center;gap:8px;min-height:44px;padding:0 14px;border-radius:999px;border:1px solid rgba(255,255,255,.14);background:rgba(255,255,255,.06);color:inherit;font:inherit;font-size:13.5px;font-weight:600;cursor:pointer}
 .hv-tray .chip svg{width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
 .hv-toast{position:absolute;left:50%;top:80px;transform:translateX(-50%);padding:10px 16px;border-radius:999px;background:rgba(16,22,32,.9);color:#eef2f7;font-size:14px;font-weight:600;pointer-events:none}
 .hv-fail{position:absolute;inset:0;display:grid;place-items:center;text-align:center;padding:32px;color:#cdd5e0}
-@media (max-width:720px){.hv-top{top:10px;left:10px;right:10px;gap:8px}.hv-chip.sum{display:none}.hv-wx .t{font-size:26px}.hv-btn .lbl{display:none}}
+@media (max-width:720px){
+  .hv-top{top:calc(env(safe-area-inset-top,0px) + 10px);left:10px;right:10px;gap:8px;flex-wrap:nowrap}
+  .hv-chip.title,.hv-chip.sum{display:none}
+  .hv-seg button{padding:0 13px;min-height:40px}
+  .hv-btn{min-width:46px;min-height:46px;padding:0 12px}.hv-btn .lbl{display:none}
+  .hv-btn.save .lbl,.hv-btn.cancel .lbl{display:inline}
+  .hv-wx{right:16px;bottom:calc(env(safe-area-inset-bottom,0px) + 14px)}.hv-wx .t{font-size:26px}.hv-wx .s{font-size:12px}
+  .hv-room{left:10px;right:10px;width:auto;bottom:calc(env(safe-area-inset-bottom,0px) + 10px)}
+  .hv-tray{left:10px;right:10px;bottom:calc(env(safe-area-inset-bottom,0px) + 10px)}
+}
 `;
 
 const esc = (v) => String(v ?? '').replace(/[&<>"']/g, (c) => ({'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'}[c]));
@@ -108,7 +117,7 @@ export class HouseView {
     host.innerHTML = `<style>${css}</style><div class="hv">
       <div class="hv-pins"></div>
       <div class="hv-top">
-        <span class="hv-chip"><b>Our house</b></span>
+        <span class="hv-chip title"><b>Our house</b></span>
         <span class="hv-chip sum"></span>
         <span class="hv-seg">${HOUSE.floors.map((f) => `<button data-floor="${f.id}">${esc(f.name)}</button>`).join('')}</span>
         <span class="hv-spacer"></span>
@@ -181,6 +190,9 @@ export class HouseView {
     r.domElement.addEventListener('pointerup', (e) => {
       if (!down || Math.hypot(e.clientX - down.x, e.clientY - down.y) > 6) { down = null; return; }
       down = null;
+      // Double-tap the model to put the view back.
+      if (Date.now() - (this._lastTap || 0) < 320) { this._lastTap = 0; this._userMoved = false; this._frame(); return; }
+      this._lastTap = Date.now();
       const hit = this._pick(e.clientX, e.clientY);
       if (hit && !this.editing) this._openRoom(hit.room.id);
       else if (!hit) this._closeRoom();
@@ -191,18 +203,30 @@ export class HouseView {
     if (!w || !h) return;
     this.renderer.setSize(w, h, false);
     this.camera.aspect = w / h;
-    // Fit the house on narrow (portrait) screens.
-    this.camera.fov = w / h < 0.8 ? 50 : 38;
     this.camera.updateProjectionMatrix();
     // Until someone moves the view, keep the whole house in frame.
-    if (!this._userMoved) {
-      // Portrait screens look along the house so its long side runs up the
-      // screen, street at the bottom.
-      const tall = w / h < 0.8, dist = tall ? 17 : 15;
-      const dir = (tall ? new THREE.Vector3(-6.4, 13.5, 0.8) : new THREE.Vector3(-1.6, 13.5, 6.2)).normalize();
-      this.camera.position.copy(this.center).addScaledVector(dir, dist);
-      this.controls?.update();
-    }
+    if (!this._userMoved) this._frame();
+    this.need = true;
+  }
+  // The starting view: portrait screens look along the house so its long
+  // side runs up the screen with the street at the bottom; wide screens look
+  // across it. The distance is worked out so the whole footprint fits.
+  _frame() {
+    const {clientWidth: w, clientHeight: h} = this.el;
+    if (!w || !h || !this.controls) return;
+    const tall = w / h < 0.8;
+    this.camera.fov = tall ? 46 : 38;
+    this.camera.aspect = w / h;
+    this.camera.updateProjectionMatrix();
+    const {w: fw, d: fd} = HOUSE.footprint;
+    const across = tall ? fd + 2.5 : fw + 4, along = tall ? fw + 4.5 : fd + 3;
+    const vfov = THREE.MathUtils.degToRad(this.camera.fov), hfov = 2 * Math.atan(Math.tan(vfov / 2) * this.camera.aspect);
+    const dist = Math.max(along / 2 / Math.tan(vfov / 2), across / 2 / Math.tan(hfov / 2)) * 1.08;
+    const dir = (tall ? new THREE.Vector3(-4.2, 13.5, 0.5) : new THREE.Vector3(-1.6, 13.5, 6.2)).normalize();
+    // Shift the target a touch towards the street so the top bar never covers the back of the house.
+    this.controls.target.copy(this.center).add(tall ? new THREE.Vector3(-0.35, 0, 0) : new THREE.Vector3(0, 0, 0.25));
+    this.camera.position.copy(this.controls.target).addScaledVector(dir, Math.min(this.controls.maxDistance, Math.max(this.controls.minDistance, dist)));
+    this.controls.update();
     this.need = true;
   }
 
@@ -430,6 +454,8 @@ export class HouseView {
     for (const [fid, fl] of this.floors) fl.group.visible = fid === id;
     this.el.querySelectorAll('[data-floor]').forEach((b) => b.classList.toggle('on', b.dataset.floor === id));
     this._closeRoom();
+    this._userMoved = false;
+    this._frame();
     this._syncPins();
     this._syncLabels();
     this.need = true;
