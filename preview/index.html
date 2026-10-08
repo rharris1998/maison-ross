@@ -2,6 +2,7 @@
 <html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Ross Home preview</title><style>html,body{margin:0;background:#080b11}</style></head>
 <body><ross-home></ross-home>
+<script type="importmap">{"imports":{"three":"../vendor/three/three.module.min.js"}}</script>
 <script type="module">
 // A mocked Home Assistant: Ross's states as of 2 October, areas, a forecast
 // and a todo list. Service calls are logged and applied to the states.
@@ -13,7 +14,7 @@ const S = {};
 const add = (entity_id, state, attributes = {}) => { S[entity_id] = {entity_id, state, attributes, last_changed: iso(5), last_updated: iso(5)}; };
 const day = q.get('day') === '1';
 add('weather.forecast_home', day ? 'sunny' : 'partlycloudy', {temperature: day ? 19.2 : 15.7, humidity: 72, wind_speed: 11, wind_speed_unit: 'km/h', friendly_name: 'Forecast Home'});
-add('sun.sun', day ? 'above_horizon' : 'below_horizon', {next_setting: new Date(now + 6 * 3600e3).toISOString(), next_rising: new Date(now + 8 * 3600e3).toISOString()});
+add('sun.sun', day ? 'above_horizon' : 'below_horizon', {elevation: day ? 34 : -14, azimuth: day ? 205 : 290, next_setting: new Date(now + 6 * 3600e3).toISOString(), next_rising: new Date(now + 8 * 3600e3).toISOString()});
 add('person.ross', 'home', {friendly_name: 'Ross'});
 add('person.evie', q.get('evie') || 'not_home', {friendly_name: 'Evie'});
 add('fan.bedroom_purifier', 'on', {preset_modes: ['auto', 'sleep'], preset_mode: 'auto', percentage: null, friendly_name: 'Core 300S Series'});
@@ -32,6 +33,10 @@ add('sensor.front_door_battery', 'unknown', {device_class: 'battery', unit_of_me
 ['garden', 'living_room', 'dining_room'].forEach((n) => add(`sensor.${n}_battery`, '100', {device_class: 'battery', unit_of_measurement: '%'}));
 add('input_boolean.doorbell_pressed', 'off');
 add('light.garden_light', 'off', {friendly_name: 'Garden Light'});
+add('light.porch_porch_light', q.get('porch') || 'off', {friendly_name: 'Porch Light'});
+add('binary_sensor.porch_porch_motion_sensor_occupancy', 'off', {friendly_name: 'Porch Motion', device_class: 'occupancy'});
+add('sensor.office_temperature', '19.6', {friendly_name: 'Office temperature', device_class: 'temperature', unit_of_measurement: '°C'});
+add('light.living_lamp', q.get('bulbs') ? 'on' : 'off', {friendly_name: 'Living room lamp'});
 add('switch.garden_motion_detection', 'off');
 add('calendar.waste_collection_schedule_london_borough_of_bexley', 'off');
 add('calendar.evie_ross', 'off', {friendly_name: 'Evie + Ross'});
@@ -54,10 +59,11 @@ if (q.get('bulbs')) {
   add('light.office_lamp', 'off', {friendly_name: 'Office lamp'});
 }
 const areas = {bedroom: {area_id: 'bedroom', name: 'Bedroom'}, living_room: {area_id: 'living_room', name: 'Living Room'}, kitchen: {area_id: 'kitchen', name: 'Kitchen'},
-  porch: {area_id: 'porch', name: 'Porch'}, office: {area_id: 'office', name: 'Office'}, garden: {area_id: 'garden', name: 'Garden'}, dining: {area_id: 'dining', name: 'Dining Room'}};
+  porch: {area_id: 'porch', name: 'Porch'}, office: {area_id: 'office', name: 'Office'}, hallway: {area_id: 'hallway', name: 'Hallway'}, landing: {area_id: 'landing', name: 'Landing'}, garden: {area_id: 'garden', name: 'Garden'}, dining: {area_id: 'dining', name: 'Dining Room'}};
 const entities = {'fan.bedroom_purifier': {area_id: 'bedroom'}, 'camera.living_room_live_view': {area_id: 'living_room'}, 'camera.garden_live_view': {area_id: 'garden'},
   'light.garden_light': {area_id: 'garden'}, 'camera.dining_room_live_view': {area_id: 'dining'}, 'camera.front_door_live_view': {area_id: 'porch'},
-  'light.porch': {area_id: 'porch'}, 'light.office_ceiling': {area_id: 'office'}, 'light.office_lamp': {area_id: 'office'}};
+  'light.porch': {area_id: 'porch'}, 'light.office_ceiling': {area_id: 'office'}, 'light.office_lamp': {area_id: 'office'}, 'light.porch_porch_light': {area_id: 'porch'},
+  'binary_sensor.porch_porch_motion_sensor_occupancy': {area_id: 'porch'}, 'sensor.office_temperature': {area_id: 'office'}, 'light.living_lamp': {area_id: 'living_room'}};
 const days = ['sunny', 'partlycloudy', 'rainy', 'cloudy', 'sunny'].map((c, i) => ({datetime: new Date(now + i * 86400e3).toISOString(), condition: c, temperature: [17, 18, 14, 15, 19][i], templow: [10, 11, 9, 8, 10][i], precipitation: c === 'rainy' ? 4.2 : 0}));
 const hours = Array.from({length: 24}, (_, i) => ({datetime: new Date(Math.floor(now / 3600e3) * 3600e3 + (i + 1) * 3600e3).toISOString(), condition: q.get('rain') && i >= 3 && i <= 6 ? 'rainy' : 'partlycloudy',
   temperature: 15 - i * 0.3, precipitation_probability: q.get('rain') && i >= 3 && i <= 6 ? 80 : 10, precipitation: q.get('rain') && i >= 3 && i <= 6 ? 1.2 : 0}));
@@ -70,6 +76,8 @@ hass = {states: {...S}, areas, entities, devices: {}, user: {name: 'Ross Harriso
   connection: {subscribeMessage: async (cb, msg) => { setTimeout(() => cb({forecast: msg.forecast_type === 'hourly' ? hours : days}), 50); return () => {}; }},
   callWS: async (m) => {
     if (m.type === 'todo/item/list') return {items: todo};
+    if (m.type === 'lovelace/config') return {views: [{path: 'home', type: 'panel', cards: [{type: 'custom:ross-home'}]}]};
+    if (m.type === 'lovelace/config/save') { console.log('saved layout', JSON.stringify(m.config.views[0].cards[0].house_layout)); return null; }
     if (m.type === 'recorder/statistics_during_period') {
       if (q.get('fresh')) return {};
       const day = (n) => { const d = new Date(now); d.setHours(0, 0, 0, 0); d.setDate(d.getDate() - n); return d.getTime(); };
@@ -105,7 +113,7 @@ hass = {states: {...S}, areas, entities, devices: {}, user: {name: 'Ross Harriso
     }
     push();
   }};
-el.setConfig({});
+el.setConfig(q.get('house') ? {start_view: 'house', house_floor: q.get('floor') || 'ground'} : {});
 el.hass = hass;
 window.__push = push; window.__S = S;
 window.__press = () => { S['input_boolean.doorbell_pressed'] = {...S['input_boolean.doorbell_pressed'], state: 'on', last_updated: new Date().toISOString()}; push(); };

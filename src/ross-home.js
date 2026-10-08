@@ -13,6 +13,8 @@
 // rounded sheets. Dark (#080b11) and light (#eef3f8) switch at sunset and
 // sunrise. Motion is slow and respects reduced motion.
 
+import {HouseView} from './ross-house.js';
+
 const VERSION = '__VERSION__';
 
 // Ross's house. Every id can be overridden from the card's YAML.
@@ -469,6 +471,7 @@ class RossHome extends HTMLElement {
     this._events = null;
     this._energy = null;       // {at, elec: Map(dayMs → kWh), water: Map(dayMs → L)}       // {at, list: [{start, end, allDay, summary, location}]}         // {at, days: [{date, items}]}
     this._sig = '';
+    this._house = null;
     this._themePref = (() => { try { return localStorage.getItem('ross-home-theme') || 'auto'; } catch { return 'auto'; } })();
   }
   static getStubConfig() { return {}; }
@@ -483,9 +486,11 @@ class RossHome extends HTMLElement {
     this._hass = hass;
     if (first) this._start();
     this._render();
+    if (this._house) this._house.update(hass, this._themeNow());
   }
   connectedCallback() { if (this._hass) this._start(); }
   disconnectedCallback() {
+    if (this._house) { this._house.dispose(); this._house = null; this.shadowRoot.querySelector('.house-host')?.remove(); }
     clearInterval(this._tick);
     this._tick = null;
     for (const k of ['_unsubForecast', '_unsubHourly']) if (this[k]) { this[k].then((u) => u && u()).catch(() => {}); this[k] = null; }
@@ -513,6 +518,7 @@ class RossHome extends HTMLElement {
       this.shadowRoot.addEventListener('keydown', (e) => { if (e.key === 'Escape' && this._sheet) this._close(); });
     }
     if (!this._tick) this._tick = setInterval(() => this._render(), 15000);
+    if (this._config?.start_view === 'house' && !this._house && !this._houseClosed) setTimeout(() => this._openHouse(), 0);
     if (!this._updateTimer) this._updateTimer = setInterval(() => this._checkForUpdate(), 10 * 60000);
     this._subscribeForecast();
     this._loadTodo();
@@ -837,6 +843,7 @@ class RossHome extends HTMLElement {
       ${this._binPill()}
       ${this._rainPill()}
       <button class="pill wide" data-act="sheet" data-kind="status">${status}</button>
+      <button class="pill iconbtn" data-act="house" title="House view" aria-label="House view">${icon('home')}</button>
       <button class="pill iconbtn" data-act="theme" title="Theme: ${this._themePref}">${icon(themeIcon)}</button>
       <span class="clock num">${hhmm(now)}</span>
     </header>`;
@@ -1220,6 +1227,82 @@ class RossHome extends HTMLElement {
           ${row('globe', 'Remote access', remote?.state === 'on' ? 'Connected through Home Assistant Cloud' : 'Off', remote?.entity_id)}
           ${phone !== null ? row('phone', "Ross's iPhone", `${phone}% battery`, c.phone_battery) : ''}</div></div>`;
   }
+  // ---- House view ----------------------------------------------------------
+  _openHouse() {
+    if (this._house || !this._hass) return;
+    const root = this.shadowRoot.querySelector('.root'), host = document.createElement('div');
+    host.className = 'house-host';
+    root.insertBefore(host, root.querySelector('.sheets'));
+    const c = this._config;
+    this._house = new HouseView(host, {
+      icon, weather: c.weather, sun: c.sun, purifier: c.purifier, pm25: c.pm25, excludeLights: c.exclude_lights,
+      layout: c.house_layout || {}, hidden: c.house_hidden || [], floor: c.house_floor, north: c.house_north || 0,
+      describe: () => this._houseText(),
+      onAction: (a, p) => this._houseAction(a, p),
+    });
+    this._house.update(this._hass, this._themeNow());
+  }
+  _closeHouse() {
+    if (!this._house) return;
+    this._house.dispose();
+    this._house = null;
+    this._houseClosed = true;
+    this.shadowRoot.querySelector('.house-host')?.remove();
+  }
+  _houseText() {
+    const h = this._hass, c = this._config;
+    const home = Object.values(h.states).filter((s) => s.entity_id.startsWith('person.') && s.state === 'home').map((s) => (s.attributes.friendly_name || '').split(' ')[0]);
+    const lit = Object.values(h.states).filter((s) => s.entity_id.startsWith('light.') && s.state === 'on' && !c.exclude_lights.includes(s.entity_id)).length;
+    const who = !home.length ? 'Nobody home' : home.length === 1 ? `${esc(home[0])} is home` : `${esc(home.slice(0, -1).join(', '))} and ${esc(home[home.length - 1])} are home`;
+    const w = this._s(c.weather), temp = num({state: w?.attributes?.temperature}), r = this._rain();
+    const sunS = this._s(c.sun), next = sunS?.state === 'above_horizon' ? sunS.attributes.next_setting : sunS?.attributes?.next_rising;
+    return {
+      sub: `${who} <span class="dim">·</span> ${lit ? `${lit} light${lit > 1 ? 's' : ''} on` : 'Lights off'}`,
+      wx: w ? `<div class="t">${temp === null ? '—' : Math.round(temp)}°<small>${esc(WEATHER_WORDS[w.state] || pretty(w.state))}</small></div>
+        <div class="s">${esc(r ? r.text : 'Dry for the next 12 hours')}${next ? ` · ${sunS.state === 'above_horizon' ? 'Sunset' : 'Sunrise'} ${hhmm(new Date(next))}` : ''}</div>` : '',
+    };
+  }
+  async _houseAction(a, p) {
+    const c = this._config;
+    switch (a) {
+      case 'close': this._closeHouse(); return null;
+      case 'toggle': this._call('homeassistant', 'toggle', {entity_id: p}); return null;
+      case 'lightsOff': this._call('light', 'turn_off', {entity_id: p}); return null;
+      case 'lightsOn': this._call('light', 'turn_on', {entity_id: p}); return null;
+      case 'more': this.dispatchEvent(new CustomEvent('hass-more-info', {detail: {entityId: p}, bubbles: true, composed: true})); return null;
+      case 'camera': if (p === c.doorbell) this._openDoor(); else this._sheet = {kind: 'cameras'}; this._render(true); return null;
+      case 'purifier': this._sheet = {kind: 'purifier'}; this._render(true); return null;
+      case 'saveLayout': return this._saveLayout(p);
+      default: return null;
+    }
+  }
+  // Pins are saved into this card's own settings in the dashboard, so the
+  // wall tablet, Ross and Evie all see the same layout. If saving there is
+  // not allowed (a non-admin account), keep it for this account instead.
+  async _saveLayout({layout, hidden}) {
+    this._config = {...this._config, house_layout: layout, house_hidden: hidden};
+    const path = (location.pathname.split('/')[1] || '').trim();
+    try {
+      const conf = await this._hass.callWS({type: 'lovelace/config', url_path: path || null});
+      let found = 0;
+      const walk = (node) => {
+        if (!node || typeof node !== 'object') return;
+        if (Array.isArray(node)) { node.forEach(walk); return; }
+        if (node.type === 'custom:ross-home') { node.house_layout = layout; node.house_hidden = hidden; found++; }
+        for (const k of ['views', 'cards', 'sections', 'card']) if (node[k]) walk(node[k]);
+      };
+      walk(conf);
+      if (!found) throw new Error('Ross Home card not found in this dashboard');
+      await this._hass.callWS({type: 'lovelace/config/save', url_path: path || null, config: conf});
+      return {ok: true};
+    } catch (e) {
+      console.warn('ross-home layout', e);
+      try {
+        await this._hass.callWS({type: 'frontend/set_user_data', key: 'ross_home_house', value: {layout, hidden}});
+        return {ok: true, personal: true};
+      } catch { return {ok: false}; }
+    }
+  }
   _close() { this._sheet = null; clearInterval(this._streamTimer); clearTimeout(this._doorTimer); this._render(true); }
 
   // ---- Actions ------------------------------------------------------------
@@ -1261,6 +1344,7 @@ class RossHome extends HTMLElement {
         this._call('light', anyOn ? 'turn_off' : 'turn_on', {entity_id: ids});
         break;
       }
+      case 'house': this._openHouse(); break;
       case 'tick': this._call('todo', 'update_item', {entity_id: c.todo, item: el.dataset.uid, status: 'completed'}); break;
       case 'nav': history.pushState(null, '', el.dataset.kind); window.dispatchEvent(new CustomEvent('location-changed')); break;
       case 'backup': this._arm('backup', () => this._call('backup', 'create_automatic', {})); break;

@@ -53,3 +53,26 @@ and can be overridden in the card's YAML.
 Versions 1.x were a fork of [bnlqn/maison](https://github.com/bnlqn/maison)
 (MIT). Its code is still under `config/`, `frontend/` and `tools/` for
 reference; the release no longer uses it.
+
+
+## House view
+
+The house button in the header opens a cut-away 3D model of the house
+(three floors, traced from the estate agent's floorplan in `src/house-plan.js`).
+Rooms glow while their lights are on, the sky follows `sun.sun` and the weather,
+and devices are pinned where they are: tap a light to toggle it (hold for its
+details), a camera for its live view, the purifier for its sheet, or a room for
+everything in it.
+
+*Place devices* lets you drag pins into place, remove them or add more from the
+tray; *Save* writes the layout into this card's settings (`house_layout`,
+`house_hidden`) so every screen sees it. Other options:
+
+| Option | Default | |
+|---|---|---|
+| `start_view` | — | `house` opens the house view on load (for a wall tablet) |
+| `house_floor` | `ground` | floor shown first: `ground`, `first` or `loft` |
+| `house_north` | `0` | degrees to turn the sun so its shadows match the real house |
+
+three.js r169 is vendored in `vendor/three` and bundled into the release by
+`tools/build-ross-home.mjs` (esbuild).
