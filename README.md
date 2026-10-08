@@ -72,7 +72,7 @@ tray; *Save* writes the layout into this card's settings (`house_layout`,
 |---|---|---|
 | `start_view` | — | `house` opens the house view on load (for a wall tablet) |
 | `house_floor` | `ground` | floor shown first: `ground`, `first` or `loft` |
-| `house_north` | `0` | degrees to turn the sun so its shadows match the real house |
+| `house_north` | `-90` | degrees to turn the sun so its shadows match the real house (-90: garden faces south) |
 
 three.js r169 is vendored in `vendor/three` and bundled into the release by
 `tools/build-ross-home.mjs` (esbuild).
