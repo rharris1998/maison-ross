@@ -350,11 +350,13 @@ header{position:relative;display:flex;align-items:center;gap:14px;margin-bottom:
 .task.done .name{text-decoration:line-through;color:var(--dim)}
 
 /* Sheets */
-.layer{position:fixed;inset:0;z-index:20;display:grid;place-items:center;padding:24px;background:var(--scrim);
+.layer{position:fixed;inset:0;z-index:20;overscroll-behavior:contain;display:grid;place-items:center;padding:24px;background:var(--scrim);
   backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px);animation:fade .25s ease}
-.sheet{width:min(980px,100%);max-height:calc(100vh - 48px);overflow:auto;border-radius:32px;background:var(--sheet);border:1px solid var(--card-line);
+.sheet{width:min(980px,100%);max-height:calc(100vh - 48px);overflow:auto;overscroll-behavior:contain;-webkit-overflow-scrolling:touch;border-radius:32px;background:var(--sheet);border:1px solid var(--card-line);
   box-shadow:0 30px 80px rgba(0,0,0,.35);padding:22px;animation:rise .32s cubic-bezier(.2,.8,.2,1)}
-@media (max-width:720px){.layer{padding:0;place-items:end stretch}.sheet{max-height:100vh;height:100%;border-radius:0;padding:16px}}
+@media (max-width:720px){.layer{padding:0;place-items:end stretch}.sheet{max-height:100vh;height:100%;border-radius:0;
+  padding:calc(14px + env(safe-area-inset-top)) calc(16px + env(safe-area-inset-right)) calc(20px + env(safe-area-inset-bottom)) calc(16px + env(safe-area-inset-left))}
+  .sheet-h{gap:12px}.sheet-h .big{width:52px;height:52px;border-radius:16px}.sheet-h h2{font-size:23px}.sheet-h .x{width:48px;height:48px;border-radius:15px}}
 @keyframes fade{from{opacity:0}}
 @keyframes rise{from{opacity:0;transform:translateY(18px) scale(.985)}}
 .sheet-h{display:flex;align-items:center;gap:16px;margin-bottom:18px}
@@ -362,9 +364,11 @@ header{position:relative;display:flex;align-items:center;gap:14px;margin-bottom:
   background:linear-gradient(160deg,color-mix(in srgb,var(--c,var(--home)) 80%,#fff),var(--c,var(--home)));box-shadow:0 10px 30px color-mix(in srgb,var(--c,var(--home)) 35%,transparent)}
 .sheet-h .big .ic{width:28px;height:28px}
 .sheet-h h2{margin:0;font-family:var(--num);font-weight:600;font-size:26px;letter-spacing:-.03em}
-.sheet-h .line{display:flex;align-items:center;gap:8px;margin-top:6px;font-size:15px}
+.sheet-h .ttl{flex:1;min-width:0}
+.sheet-h h2{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.sheet-h .line{display:flex;align-items:center;flex-wrap:wrap;gap:2px 8px;margin-top:4px;font-size:15px;line-height:1.35}
 .sheet-h .line b{font-weight:700}
-.sheet-h .x{margin-left:auto;width:56px;height:56px;border-radius:18px;display:grid;place-items:center;background:var(--tile);border:1px solid var(--tile-line);color:var(--dim)}
+.sheet-h .x{margin-left:auto;flex:none;width:56px;height:56px;border-radius:18px;display:grid;place-items:center;background:var(--tile);border:1px solid var(--tile-line);color:var(--dim)}
 .sheet-body{display:grid;grid-template-columns:minmax(0,.9fr) minmax(0,1.3fr);gap:14px}
 @media (max-width:720px){.sheet-body{grid-template-columns:1fr}}
 .panel{border-radius:24px;background:var(--card);border:1px solid var(--card-line);padding:16px}
@@ -490,6 +494,7 @@ class RossHome extends HTMLElement {
   }
   connectedCallback() { if (this._hass) this._start(); }
   disconnectedCallback() {
+    this._lockPage(false);
     if (this._house) { this._house.dispose(); this._house = null; this.shadowRoot.querySelector('.house-host')?.remove(); }
     clearInterval(this._tick);
     this._tick = null;
@@ -1057,6 +1062,7 @@ class RossHome extends HTMLElement {
   // ---- Sheets -------------------------------------------------------------
   _renderSheet(alerts) {
     const host = this.shadowRoot.querySelector('.sheets');
+    this._lockPage(!!this._sheet);
     if (!this._sheet) { host.innerHTML = ''; return; }
     const kind = this._sheet.kind, existing = host.querySelector('.sheet');
     if (kind === 'purifier') this._loadHistory();
@@ -1068,11 +1074,28 @@ class RossHome extends HTMLElement {
       return;
     }
     const html = kind === 'purifier' ? this._purifierSheet() : kind === 'cameras' ? this._camerasSheet() : kind === 'weather' ? this._weatherSheet() : kind === 'bins' ? this._binsSheet() : kind === 'agenda' ? this._agendaSheet() : kind === 'energy' ? this._energySheet() : this._statusSheet(alerts);
-    if (existing && existing.dataset.kind === kind) { existing.innerHTML = html; return; }
+    // Only touch the DOM when something changed: replacing it mid-swipe cancels the scroll on iPhones.
+    if (existing && existing.dataset.kind === kind) { if (existing._html !== html) { existing.innerHTML = html; existing._html = html; } return; }
     host.innerHTML = `<div class="layer" data-act="close"><div class="sheet" role="dialog" aria-modal="true" data-kind="${kind}">${html}</div></div>`;
+    host.querySelector('.sheet')._html = html;
+  }
+  // Keep the dashboard behind a sheet still, so a swipe always scrolls the sheet.
+  _lockPage(on) {
+    if (on === !!this._locked) return;
+    this._locked = on;
+    const sheets = this.shadowRoot.querySelector('.sheets');
+    if (sheets && !sheets._touchGuard) {
+      // A swipe on the dimmed backdrop (not the sheet) should do nothing, not scroll the page.
+      sheets._touchGuard = true;
+      sheets.addEventListener('touchmove', (e) => { if (!e.composedPath().some((n) => n.classList?.contains('sheet'))) e.preventDefault(); }, {passive: false});
+    }
+    for (const el of [document.documentElement, document.body]) {
+      if (on) { el.dataset.rhOverflow = el.style.overflow; el.style.overflow = 'hidden'; }
+      else { el.style.overflow = el.dataset.rhOverflow || ''; delete el.dataset.rhOverflow; }
+    }
   }
   _sheetHead(ic, tone, title, dot, line) {
-    return `<div class="sheet-h"><span class="big" style="--c:var(--${tone})">${icon(ic)}</span><div><h2>${title}</h2>
+    return `<div class="sheet-h"><span class="big" style="--c:var(--${tone})">${icon(ic)}</span><div class="ttl"><h2>${title}</h2>
       <div class="line"><span class="dot ${dot}"></span>${line}</div></div><button class="x" data-act="close" aria-label="Close">${icon('x')}</button></div>`;
   }
   _purifierSheet() {
