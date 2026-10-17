@@ -27,6 +27,7 @@ sunrise, or pick one with the header button. Reduced motion is respected.
 - Quick actions: purifier, sleep mode, floodlight, motion alerts, lights, cameras, backup, updates.
 - Rooms: every area with lights, cameras, a purifier or a temperature; lit rooms glow.
 - Front door and cameras: Ring snapshots, tap for live view.
+- Dinner: tonight's meal from the Meal plan calendar with Ross's and Evie's portions; tap for the day's breakfast, lunch and snack and the week ahead.
 - Shopping list: tick items off.
 
 Every entity id has a default in `DEFAULTS` at the top of `src/ross-home.js`
@@ -43,7 +44,7 @@ and can be overridden in the card's YAML.
 - `src/ross-home.js` is the whole dashboard.
 - `preview/index.html` mocks Home Assistant with this house's states:
   `python3 -m http.server` at the repo root, then open `/preview/index.html`
-  (query flags: `day=1`, `bulbs=1`, `todo=1`, `update=1`, `filter=8`,
+  (query flags: `nomeals=1`, `day=1`, `bulbs=1`, `todo=1`, `update=1`, `filter=8`,
   `garden=unavailable`, `ding=1`).
 - Every push to `main` builds `dist/maison-ross.js` and publishes a release
   that HACS offers as an update.

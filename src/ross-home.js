@@ -43,6 +43,9 @@ const DEFAULTS = Object.freeze({
   todo: 'todo.shopping_list',
   bins: 'calendar.waste_collection_schedule_london_borough_of_bexley',
   calendar: 'calendar.evie_ross',
+  // Ross and Evie's two-week meal plan: one all-day event a day, notes hold
+  // "Breakfast: …", "Lunch: …", "Snack: …", "Ross: … (~850 kcal, 50 g protein)", "Evie: …".
+  meals: 'calendar.meal_plan',
   energy_usage: 'sensor.dcc_sourced_smart_electricity_meter_usage_today',
   energy_cost: 'sensor.dcc_sourced_smart_electricity_meter_cost_today',
   energy_rate: 'sensor.dcc_sourced_smart_electricity_meter_rate',
@@ -66,6 +69,20 @@ const binInfo = (summary = '') => {
 };
 const localDay = (s) => { const [y, m, d] = s.split('-').map(Number); return new Date(y, m - 1, d); };
 const binDots = (items) => `<span class="bindots">${items.map((b) => `<span class="bindot" style="--c:${b.colour}" title="${esc(b.bin)}"></span>`).join('')}</span>`;
+// One day of the meal plan from its calendar event.
+const MEAL_KEYS = {breakfast: 'breakfast', lunch: 'lunch', snack: 'snack', snacks: 'snack', ross: 'ross', evie: 'evie'};
+export const parseMeal = (summary = '', description = '') => {
+  const out = {dinner: summary.trim(), tag: '', breakfast: '', lunch: '', snack: '', ross: null, evie: null, notes: []};
+  description.split('\n').map((l) => l.trim()).filter(Boolean).forEach((line, i) => {
+    const m = line.match(/^(\w+):\s*(.*)$/), key = m && MEAL_KEYS[m[1].toLowerCase()];
+    if (!key) { if (i === 0 && /^week\s/i.test(line)) out.tag = line; else out.notes.push(line); return; }
+    if (key === 'ross' || key === 'evie') {
+      const p = m[2].match(/^(.*?)\s*\((?:~)?([\d,]+)\s*kcal(?:,\s*(?:~)?(\d+)\s*g protein)?\)\s*$/i);
+      out[key] = p ? {plate: p[1], kcal: Number(p[2].replace(',', '')), protein: p[3] ? Number(p[3]) : null} : {plate: m[2], kcal: null, protein: null};
+    } else out[key] = m[2];
+  });
+  return out;
+};
 const binWhen = (d) => (d.away === 0 ? 'today' : d.away === 1 ? 'tomorrow' : d.away < 7 ? localDay(d.date).toLocaleDateString('en-GB', {weekday: 'long'}) : `in ${d.away} days`);
 
 // ---- Line icons: 24 px grid, 2 px stroke, round caps ----------------------
@@ -87,6 +104,7 @@ const ICONS = {
   phone: '<rect x="5" y="2" width="14" height="20" rx="2"/><path d="M12 18h.01"/>',
   list: '<path d="m3 17 2 2 4-4M3 7l2 2 4-4M13 6h8M13 12h8M13 18h8"/>',
   check: '<path d="M20 6 9 17l-5-5"/>',
+  food: '<path d="M3 2v7c0 1.1.9 2 2 2h4a2 2 0 0 0 2-2V2M7 2v20M21 15V2a5 5 0 0 0-5 5v6c0 1.1.9 2 2 2h3Zm0 0v7"/>',
   x: '<path d="M18 6 6 18M6 6l12 12"/>',
   chevron: '<path d="m9 18 6-6-6-6"/>',
   power: '<path d="M12 2v10"/><path d="M18.4 6.6a9 9 0 1 1-12.77.04"/>',
@@ -370,7 +388,7 @@ header{position:relative;display:flex;align-items:center;gap:14px;margin-bottom:
 .sheet-h .line b{font-weight:700}
 .sheet-h .x{margin-left:auto;flex:none;width:56px;height:56px;border-radius:18px;display:grid;place-items:center;background:var(--tile);border:1px solid var(--tile-line);color:var(--dim)}
 .sheet-body{display:grid;grid-template-columns:minmax(0,.9fr) minmax(0,1.3fr);gap:14px}
-@media (max-width:720px){.sheet-body{grid-template-columns:1fr}}
+@media (max-width:720px){.sheet-body{grid-template-columns:minmax(0,1fr)}}
 .panel{border-radius:24px;background:var(--card);border:1px solid var(--card-line);padding:16px}
 .panel h3{margin:0 0 4px;font-size:17px;font-weight:700}
 .panel .hint{font-size:13px;color:var(--dim);margin-bottom:12px}
@@ -455,6 +473,15 @@ header{position:relative;display:flex;align-items:center;gap:14px;margin-bottom:
 .door-info .door-now .num{font-size:48px}
 .door-info .action:first-of-type{margin-top:14px}
 
+.card-h .note.heat{color:var(--heat)}
+.meal .dish{font-family:var(--num);font-weight:500;font-size:22px;line-height:1.2}
+.meal .st{font-size:13px;color:var(--dim);margin-top:4px}
+.plate{display:flex;align-items:center;gap:12px;min-height:56px;padding:8px 12px;border-radius:18px;background:var(--tile);border:1px solid var(--tile-line);margin-top:8px}
+.plate .who{flex:none;width:52px;font-size:12px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;color:var(--c)}
+.plate .txt{flex:1;min-width:0}.plate .name{font-size:14.5px;font-weight:700;line-height:1.3}.plate .st{font-size:13px;color:var(--dim)}
+.mrows .erow span:last-child{text-align:right}
+.mnote{font-size:13.5px;color:var(--dim);margin-top:10px;line-height:1.4}
+
 @media (prefers-reduced-motion:reduce){*,*::before,*::after{animation:none!important;transition:none!important}}
 `;
 
@@ -473,6 +500,7 @@ class RossHome extends HTMLElement {
     this._todo = [];
     this._bins = null;
     this._events = null;
+    this._meals = null;        // {at, days: [{date, away, ...parseMeal}]}
     this._energy = null;       // {at, elec: Map(dayMs → kWh), water: Map(dayMs → L)}       // {at, list: [{start, end, allDay, summary, location}]}         // {at, days: [{date, items}]}
     this._sig = '';
     this._house = null;
@@ -691,6 +719,24 @@ class RossHome extends HTMLElement {
       this._render();
     } catch { this._events = {at: Date.now(), list: []}; } finally { this._eventsLoading = false; }
   }
+  // The meal plan's next eight days, fetched every ten minutes.
+  async _loadMeals() {
+    const id = this._config?.meals;
+    if (!id || !this._s(id) || (this._meals && Date.now() - this._meals.at < 600000) || this._mealsLoading) return;
+    this._mealsLoading = true;
+    try {
+      const start = new Date(); start.setHours(0, 0, 0, 0);
+      const end = new Date(start.getTime() + 8 * 86400e3);
+      const res = await this._hass.callApi('GET', `calendars/${id}?start=${encodeURIComponent(start.toISOString())}&end=${encodeURIComponent(end.toISOString())}`);
+      const days = (res || []).map((e) => {
+        const date = e.start?.date || (e.start?.dateTime || '').slice(0, 10);
+        return date ? {date, away: Math.round((localDay(date) - start) / 86400e3), ...parseMeal(e.summary, e.description || '')} : null;
+      }).filter((d) => d && d.away >= 0).sort((a, b) => a.away - b.away);
+      this._meals = {at: Date.now(), days};
+      this._sig = '';
+      this._render();
+    } catch { this._meals = {at: Date.now(), days: []}; } finally { this._mealsLoading = false; }
+  }
   // Events not yet over, each with the day it shows under.
   _upcoming() {
     const now = new Date(), today = new Date(); today.setHours(0, 0, 0, 0);
@@ -787,13 +833,14 @@ class RossHome extends HTMLElement {
       const d = s.entity_id.split('.')[0];
       if (d === 'light' || d === 'person' || d === 'update' || d === 'media_player' || d === 'climate') sig += `|${s.entity_id}:${s.state}:${s.attributes?.brightness ?? ''}`;
     }
-    return sig + `|${Object.keys(h.areas || {}).length}|${this._rain()?.text}|${this._history?.at}|${this._bins?.at}|${this._events?.at}|${this._energy?.at}`;
+    return sig + `|${Object.keys(h.areas || {}).length}|${this._rain()?.text}|${this._history?.at}|${this._bins?.at}|${this._events?.at}|${this._meals?.at}|${this._energy?.at}`;
   }
   _render(force = false) {
     if (!this._hass || !this._config || !this.shadowRoot.querySelector('.root')) return;
     this._loadTodo();
     this._loadBins();
     this._loadEvents();
+    this._loadMeals();
     this._loadEnergy();
     this._watchDoor();
     const now = Date.now(), sig = this._signature(now);
@@ -807,7 +854,7 @@ class RossHome extends HTMLElement {
     root.querySelector('.main').innerHTML = this._header(alerts) +
       `<div class="grid"><div class="col c1">${this._airCard()}${this._weatherCard()}${this._calendarCard()}</div>` +
       `<div class="col c2">${this._actionsCard()}${this._roomsCard()}${this._energyCard()}</div>` +
-      `<div class="col c3">${this._doorCard()}${this._camerasCard()}${this._todoCard()}</div></div>`;
+      `<div class="col c3">${this._doorCard()}${this._camerasCard()}${this._mealsCard()}${this._todoCard()}</div></div>`;
     this._renderSheet(alerts);
   }
   _mood(root) {
@@ -1046,6 +1093,37 @@ class RossHome extends HTMLElement {
     return `<button class="snap ${ok(s) ? '' : 'off'}" data-act="more" data-entity="${cam.camera}" aria-label="Open ${esc(cam.name)} live view">
       <img src="${esc(this._snapUrl(s))}" alt="" loading="lazy"><span class="cap"><span class="dot ${ok(s) ? '' : 'red'}"></span>${esc(cam.name)}${when ? ` · ${when}` : ''}</span></button>`;
   }
+  _mealDay(d) {
+    return d.away === 0 ? 'Tonight' : d.away === 1 ? 'Tomorrow' : localDay(d.date).toLocaleDateString('en-GB', {weekday: 'long'});
+  }
+  _plate(who, p, tone) {
+    if (!p) return '';
+    const facts = [p.kcal ? `${p.kcal.toLocaleString('en-GB')} kcal` : '', p.protein ? `${p.protein} g protein` : ''].filter(Boolean).join(' · ');
+    return `<div class="plate" style="--c:var(--${tone})"><span class="who">${who}</span><span class="txt"><div class="name">${esc(p.plate)}</div>${facts ? `<div class="st">${facts}</div>` : ''}</span></div>`;
+  }
+  _mealsCard() {
+    const s = this._s(this._config.meals);
+    if (!s) return '';
+    const days = this._meals?.days || [], d = days[0];
+    const body = !this._meals ? '<div class="empty dim">Loading…</div>'
+      : !d ? `<div class="empty">${icon('food')}<span>Nothing planned this week. Add dinners to the ${esc(s.attributes.friendly_name || 'meal plan')} calendar.</span></div>`
+        : `<div class="meal"><div class="dish">${esc(d.dinner)}</div>${d.breakfast || d.lunch ? `<div class="st">${[d.breakfast && `Breakfast ${esc(d.breakfast)}`, d.lunch && `Lunch ${esc(d.lunch)}`].filter(Boolean).join(' · ')}</div>` : ''}</div>` +
+          this._plate('Ross', d.ross, 'home') + this._plate('Evie', d.evie, 'accent');
+    return this._card('Dinner', d ? this._mealDay(d) : '', body, 'data-act="sheet" data-kind="meals"', d && d.away === 0 ? 'heat' : '');
+  }
+  _mealsSheet() {
+    const s = this._s(this._config.meals), days = this._meals?.days || [], d = days[0];
+    const line = (k, v) => v ? `<div class="erow"><span class="dim">${k}</span><span>${esc(v)}</span></div>` : '';
+    const today = d ? `<div class="panel"><h3>${esc(d.dinner)}<span class="dim"> · ${this._mealDay(d).toLowerCase()}</span></h3>${d.tag ? `<div class="hint">${esc(d.tag)}</div>` : ''}
+        ${this._plate('Ross', d.ross, 'home')}${this._plate('Evie', d.evie, 'accent')}
+        <div class="erows mrows">${line('Breakfast', d.breakfast)}${line('Lunch', d.lunch)}${line('Snack', d.snack)}</div>
+        ${d.notes.map((n) => `<div class="mnote">${esc(n)}</div>`).join('')}</div>` : '';
+    const week = days.slice(1, 8).map((x) => `<div class="ev"><span class="when">${esc(x.away === 1 ? 'Tomorrow' : localDay(x.date).toLocaleDateString('en-GB', {weekday: 'short', day: 'numeric'}))}</span>
+        <span class="txt"><div class="name">${esc(x.dinner)}</div><div class="st">${[x.ross?.kcal && `Ross ${x.ross.kcal.toLocaleString('en-GB')} kcal`, x.evie?.kcal && `Evie ${x.evie.kcal.toLocaleString('en-GB')} kcal`].filter(Boolean).join(' · ')}</div></span></div>`).join('');
+    return this._sheetHead('food', 'heat', 'Meal plan', '', d ? `<b>${esc(this._mealDay(d))}: ${esc(d.dinner)}</b><span class="dim">· ${esc(s?.attributes.friendly_name || 'Meal plan')} calendar</span>` : '<b>Nothing planned</b>') +
+      `<div class="sheet-body">${today}<div class="panel"><h3>Coming up</h3><div class="hint">Same meals, different plates: equal protein, Ross gets about double the carbs.</div>
+        <div class="agenda">${week || '<div class="dim">Nothing else planned this week.</div>'}</div></div></div>`;
+  }
   _todoCard() {
     const s = this._s(this._config.todo);
     if (!s) return '';
@@ -1073,7 +1151,7 @@ class RossHome extends HTMLElement {
       this._mountStream(host.querySelector('.stream'));
       return;
     }
-    const html = kind === 'purifier' ? this._purifierSheet() : kind === 'cameras' ? this._camerasSheet() : kind === 'weather' ? this._weatherSheet() : kind === 'bins' ? this._binsSheet() : kind === 'agenda' ? this._agendaSheet() : kind === 'energy' ? this._energySheet() : this._statusSheet(alerts);
+    const html = kind === 'purifier' ? this._purifierSheet() : kind === 'cameras' ? this._camerasSheet() : kind === 'weather' ? this._weatherSheet() : kind === 'bins' ? this._binsSheet() : kind === 'agenda' ? this._agendaSheet() : kind === 'meals' ? this._mealsSheet() : kind === 'energy' ? this._energySheet() : this._statusSheet(alerts);
     // Only touch the DOM when something changed: replacing it mid-swipe cancels the scroll on iPhones.
     if (existing && existing.dataset.kind === kind) { if (existing._html !== html) { existing.innerHTML = html; existing._html = html; } return; }
     host.innerHTML = `<div class="layer" data-act="close"><div class="sheet" role="dialog" aria-modal="true" data-kind="${kind}">${html}</div></div>`;
