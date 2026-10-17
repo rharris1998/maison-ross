@@ -27,7 +27,7 @@ sunrise, or pick one with the header button. Reduced motion is respected.
 - Quick actions: purifier, sleep mode, floodlight, motion alerts, lights, cameras, backup, updates.
 - Rooms: every area with lights, cameras, a purifier or a temperature; lit rooms glow.
 - Front door and cameras: Ring snapshots, tap for live view.
-- Dinner: tonight's meal from the Meal plan calendar with Ross's and Evie's portions; tap for the day's breakfast, lunch and snack and the week ahead.
+- Dinner: tonight's meal from the Meal plan calendar with Ross's and Evie's portions; tap for the day's breakfast, lunch and snack and the week ahead. Tap any day to swap it with another night, pick another dinner from the plan, mark it eating out, takeaway or leftovers, or put the planned meal back. Only that day changes; the fortnightly plan stays as it is.
 - Shopping list: tick items off.
 
 Every entity id has a default in `DEFAULTS` at the top of `src/ross-home.js`
