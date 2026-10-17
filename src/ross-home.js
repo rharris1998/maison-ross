@@ -83,6 +83,19 @@ export const parseMeal = (summary = '', description = '') => {
   });
   return out;
 };
+// Dinners that need no recipe, for nights the plan doesn't happen.
+const NO_COOK = [['Eating out', 'No cooking tonight.'], ['Takeaway', 'No cooking tonight.'], ['Leftovers', 'Use up what is in the fridge or freezer.']];
+const isoDate = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+// A day's new notes: its own header, breakfast, lunch, snack and batch-cook
+// line, with the chosen dinner's plates and cooking notes.
+export const composeMeal = (day, meal, extra = '') => {
+  const lines = (day.raw || '').split('\n').map((l) => l.trim()).filter(Boolean);
+  const keep = lines.filter((l, i) => (i === 0 && /^week\s/i.test(l)) || /^(breakfast|lunch|snacks?):/i.test(l) || /batch cook/i.test(l));
+  const plates = meal ? (meal.raw || '').split('\n').map((l) => l.trim()).filter((l) => /^(ross|evie):/i.test(l)) : [];
+  const notes = meal ? (meal.notes || []).filter((n) => !/batch cook/i.test(n)) : [];
+  const head = keep.filter((l) => !/batch cook/i.test(l)), batch = keep.filter((l) => /batch cook/i.test(l));
+  return [...head, ...plates, ...notes, ...(extra ? [extra] : []), ...batch].join('\n');
+};
 const binWhen = (d) => (d.away === 0 ? 'today' : d.away === 1 ? 'tomorrow' : d.away < 7 ? localDay(d.date).toLocaleDateString('en-GB', {weekday: 'long'}) : `in ${d.away} days`);
 
 // ---- Line icons: 24 px grid, 2 px stroke, round caps ----------------------
@@ -480,6 +493,14 @@ header{position:relative;display:flex;align-items:center;gap:14px;margin-bottom:
 .plate .who{flex:none;width:52px;font-size:12px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;color:var(--c)}
 .plate .txt{flex:1;min-width:0}.plate .name{font-size:14.5px;font-weight:700;line-height:1.3}.plate .st{font-size:13px;color:var(--dim)}
 .mrows .erow span:last-child{text-align:right}
+.ev.pick{width:100%;text-align:left;color:inherit;font:inherit;cursor:pointer}
+.ev.pick:disabled{opacity:.5}
+.ev.pick>.ic,.ev .swap .ic{width:18px;height:18px;color:var(--dim);flex:none}
+.ev .swap{display:grid;place-items:center;flex:none}
+.ev.pick .badge{width:40px;height:40px;border-radius:13px;display:grid;place-items:center;flex:none;background:color-mix(in srgb,var(--heat) 14%,transparent);color:var(--heat)}
+.ev.pick .badge .ic{width:20px;height:20px}
+.chg{font-size:11px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;color:var(--heat);margin-left:6px}
+.sheet-body.one{grid-template-columns:minmax(0,1fr)}
 .mnote{font-size:13.5px;color:var(--dim);margin-top:10px;line-height:1.4}
 
 @media (prefers-reduced-motion:reduce){*,*::before,*::after{animation:none!important;transition:none!important}}
@@ -719,19 +740,28 @@ class RossHome extends HTMLElement {
       this._render();
     } catch { this._events = {at: Date.now(), list: []}; } finally { this._eventsLoading = false; }
   }
-  // The meal plan's next eight days, fetched every ten minutes.
+  // The meal plan's next three weeks, fetched every ten minutes.
   async _loadMeals() {
     const id = this._config?.meals;
     if (!id || !this._s(id) || (this._meals && Date.now() - this._meals.at < 600000) || this._mealsLoading) return;
     this._mealsLoading = true;
     try {
       const start = new Date(); start.setHours(0, 0, 0, 0);
-      const end = new Date(start.getTime() + 8 * 86400e3);
+      // Three weeks: the week shown plus enough of the fortnightly series to
+      // know each day's planned meal after it has been changed.
+      const end = new Date(start.getTime() + 22 * 86400e3);
       const res = await this._hass.callApi('GET', `calendars/${id}?start=${encodeURIComponent(start.toISOString())}&end=${encodeURIComponent(end.toISOString())}`);
       const days = (res || []).map((e) => {
         const date = e.start?.date || (e.start?.dateTime || '').slice(0, 10);
-        return date ? {date, away: Math.round((localDay(date) - start) / 86400e3), ...parseMeal(e.summary, e.description || '')} : null;
+        return date ? {date, away: Math.round((localDay(date) - start) / 86400e3), uid: e.uid || null, rid: e.recurrence_id || null,
+          changed: !!(e.recurrence_id && !e.rrule), raw: e.description || '', ...parseMeal(e.summary, e.description || '')} : null;
       }).filter((d) => d && d.away >= 0).sort((a, b) => a.away - b.away);
+      // A changed day that matches its plan again isn't "changed".
+      for (const d of days) {
+        if (!d.changed) continue;
+        const plan = days.find((x) => x.uid === d.uid && x.date !== d.date && !x.changed);
+        if (plan && plan.dinner === d.dinner && plan.raw === d.raw) d.changed = false;
+      }
       this._meals = {at: Date.now(), days};
       this._sig = '';
       this._render();
@@ -1093,6 +1123,69 @@ class RossHome extends HTMLElement {
     return `<button class="snap ${ok(s) ? '' : 'off'}" data-act="more" data-entity="${cam.camera}" aria-label="Open ${esc(cam.name)} live view">
       <img src="${esc(this._snapUrl(s))}" alt="" loading="lazy"><span class="cap"><span class="dot ${ok(s) ? '' : 'red'}"></span>${esc(cam.name)}${when ? ` · ${when}` : ''}</span></button>`;
   }
+  // The plan as written for a day's series (another, unchanged occurrence).
+  _planned(d) {
+    if (!d?.uid) return null;
+    return (this._meals?.days || []).find((x) => x.uid === d.uid && !x.changed && x.date !== d.date) || null;
+  }
+  // Every dinner in the plan once, for "something else".
+  _menu() {
+    const seen = new Map();
+    for (const x of this._meals?.days || []) if (!x.changed && (x.ross || x.evie) && !seen.has(x.dinner.toLowerCase())) seen.set(x.dinner.toLowerCase(), x);
+    return [...seen.values()].sort((a, b) => a.dinner.localeCompare(b.dinner));
+  }
+  async _setMeal(day, summary, description) {
+    const next = localDay(day.date); next.setDate(next.getDate() + 1);
+    const msg = {type: 'calendar/event/update', entity_id: this._config.meals, uid: day.uid, event: {summary, dtstart: day.date, dtend: isoDate(next), description}};
+    if (day.rid) msg.recurrence_id = day.rid;
+    await this._hass.callWS(msg);
+  }
+  async _changeMeal(date, how, value) {
+    const days = this._meals?.days || [], day = days.find((x) => x.date === date);
+    if (!day?.uid || this._mealBusy) return;
+    this._mealBusy = true; this._mealErr = ''; this._render(true);
+    try {
+      if (how === 'swap') {
+        const other = days.find((x) => x.date === value);
+        if (!other?.uid) throw new Error('missing');
+        await this._setMeal(day, other.dinner, composeMeal(day, other));
+        await this._setMeal(other, day.dinner, composeMeal(other, day));
+      } else if (how === 'meal') {
+        const meal = this._menu().find((x) => x.dinner === value);
+        await this._setMeal(day, value, composeMeal(day, meal));
+      } else if (how === 'nocook') {
+        await this._setMeal(day, value, composeMeal(day, null, (NO_COOK.find(([n]) => n === value) || [])[1] || ''));
+      } else if (how === 'plan') {
+        const plan = this._planned(day);
+        if (!plan) throw new Error('missing');
+        await this._setMeal(day, plan.dinner, plan.raw);
+      }
+      this._sheet = {kind: 'meals'};
+      if (this._meals) this._meals.at = 0;   // refetch now, keeping the old week on screen meanwhile
+    } catch {
+      this._mealErr = 'Couldn\'t change the meal plan. Check Home Assistant is reachable and try again.';
+    } finally { this._mealBusy = false; this._render(true); }
+  }
+  _mealPicker(date) {
+    const days = this._meals?.days || [], d = days.find((x) => x.date === date);
+    if (!d) return '<div class="dim">That day is no longer in the plan.</div>';
+    const when = d.away === 0 ? 'tonight' : d.away === 1 ? 'tomorrow' : localDay(d.date).toLocaleDateString('en-GB', {weekday: 'long'});
+    const plan = d.changed ? this._planned(d) : null;
+    const kcal = (x) => [x.ross?.kcal && `Ross ${x.ross.kcal.toLocaleString('en-GB')} kcal`, x.evie?.kcal && `Evie ${x.evie.kcal.toLocaleString('en-GB')} kcal`].filter(Boolean).join(' · ');
+    const row = (act, attrs, title, sub, ic) => `<button class="ev pick" data-act="${act}" data-date="${d.date}" ${attrs} ${this._mealBusy ? 'disabled' : ''}>
+        <span class="badge">${icon(ic)}</span><span class="txt"><div class="name">${title}</div>${sub ? `<div class="st">${sub}</div>` : ''}</span>${icon('chevron')}</button>`;
+    const swaps = days.filter((x) => x.away >= 0 && x.away <= 7 && x.date !== d.date && x.uid)
+      .map((x) => row('meal-swap', `data-with="${x.date}"`, `Swap with ${esc(x.away === 0 ? 'tonight' : x.away === 1 ? 'tomorrow' : localDay(x.date).toLocaleDateString('en-GB', {weekday: 'long'}))}`, `${esc(x.dinner)} moves to ${esc(when)}, ${esc(d.dinner)} moves there`, 'refresh')).join('');
+    const menu = this._menu().filter((x) => x.dinner !== d.dinner).map((x) => row('meal-set', `data-name="${esc(x.dinner)}"`, esc(x.dinner), kcal(x), 'food')).join('');
+    const nocook = NO_COOK.map(([n, note]) => row('meal-nocook', `data-name="${esc(n)}"`, n, note, 'home')).join('');
+    return `<div class="sheet-body one">
+        ${plan ? `<div class="panel"><h3>Back to the plan</h3><div class="agenda">${row('meal-plan', '', `Put ${esc(plan.dinner)} back`, 'The meal this day was planned to have', 'calendar')}</div></div>` : ''}
+        <div class="panel"><h3>Move a day</h3><div class="hint">Haven't got what you need? Swap with another night this week.</div><div class="agenda">${swaps || '<div class="dim">No other days this week.</div>'}</div></div>
+        <div class="panel"><h3>Something else</h3><div class="hint">Any dinner from your plan, with its portions for you both. Only ${esc(when)} changes.</div><div class="agenda">${menu}</div></div>
+        <div class="panel"><h3>Not cooking</h3><div class="agenda">${nocook}</div></div>
+        ${this._mealErr ? `<div class="panel t-act">${esc(this._mealErr)}</div>` : ''}
+        <button class="action" data-act="meal-back">Back to the week</button></div>`;
+  }
   _mealDay(d) {
     return d.away === 0 ? 'Tonight' : d.away === 1 ? 'Tomorrow' : localDay(d.date).toLocaleDateString('en-GB', {weekday: 'long'});
   }
@@ -1112,16 +1205,22 @@ class RossHome extends HTMLElement {
     return this._card('Dinner', d ? this._mealDay(d) : '', body, 'data-act="sheet" data-kind="meals"', d && d.away === 0 ? 'heat' : '');
   }
   _mealsSheet() {
-    const s = this._s(this._config.meals), days = this._meals?.days || [], d = days[0];
+    const s = this._s(this._config.meals), days = (this._meals?.days || []).filter((x) => x.away <= 7), d = days[0];
+    const pick = this._sheet?.pick ? days.find((x) => x.date === this._sheet.pick) : null;
+    if (pick) {
+      const when = pick.away === 0 ? 'Tonight' : pick.away === 1 ? 'Tomorrow' : localDay(pick.date).toLocaleDateString('en-GB', {weekday: 'long', day: 'numeric', month: 'short'});
+      return this._sheetHead('food', 'heat', `Change ${esc(when.toLowerCase().startsWith('to') ? when.toLowerCase() : when)}`, '', `<b>Planned: ${esc(pick.dinner)}</b><span class="dim">· ${this._mealBusy ? 'saving…' : 'pick what you\'re having instead'}</span>`) + this._mealPicker(pick.date);
+    }
     const line = (k, v) => v ? `<div class="erow"><span class="dim">${k}</span><span>${esc(v)}</span></div>` : '';
     const today = d ? `<div class="panel"><h3>${esc(d.dinner)}<span class="dim"> · ${this._mealDay(d).toLowerCase()}</span></h3>${d.tag ? `<div class="hint">${esc(d.tag)}</div>` : ''}
         ${this._plate('Ross', d.ross, 'home')}${this._plate('Evie', d.evie, 'accent')}
         <div class="erows mrows">${line('Breakfast', d.breakfast)}${line('Lunch', d.lunch)}${line('Snack', d.snack)}</div>
-        ${d.notes.map((n) => `<div class="mnote">${esc(n)}</div>`).join('')}</div>` : '';
-    const week = days.slice(1, 8).map((x) => `<div class="ev"><span class="when">${esc(x.away === 1 ? 'Tomorrow' : localDay(x.date).toLocaleDateString('en-GB', {weekday: 'short', day: 'numeric'}))}</span>
-        <span class="txt"><div class="name">${esc(x.dinner)}</div><div class="st">${[x.ross?.kcal && `Ross ${x.ross.kcal.toLocaleString('en-GB')} kcal`, x.evie?.kcal && `Evie ${x.evie.kcal.toLocaleString('en-GB')} kcal`].filter(Boolean).join(' · ')}</div></span></div>`).join('');
+        ${d.notes.map((n) => `<div class="mnote">${esc(n)}</div>`).join('')}
+        <button class="action" style="--c:var(--heat)" data-act="meal-pick" data-date="${d.date}">${icon('refresh')}${d.away === 0 ? 'Change tonight' : 'Change this day'}</button></div>` : '';
+    const week = days.slice(1, 8).map((x) => `<button class="ev pick" data-act="meal-pick" data-date="${x.date}" aria-label="Change ${esc(x.dinner)}"><span class="when">${esc(x.away === 1 ? 'Tomorrow' : localDay(x.date).toLocaleDateString('en-GB', {weekday: 'short', day: 'numeric'}))}</span>
+        <span class="txt"><div class="name">${esc(x.dinner)}${x.changed ? ' <span class="chg">changed</span>' : ''}</div><div class="st">${[x.ross?.kcal && `Ross ${x.ross.kcal.toLocaleString('en-GB')} kcal`, x.evie?.kcal && `Evie ${x.evie.kcal.toLocaleString('en-GB')} kcal`].filter(Boolean).join(' · ') || (x.notes[0] ? esc(x.notes[0]) : '')}</div></span><span class="swap">${icon('refresh')}</span></button>`).join('');
     return this._sheetHead('food', 'heat', 'Meal plan', '', d ? `<b>${esc(this._mealDay(d))}: ${esc(d.dinner)}</b><span class="dim">· ${esc(s?.attributes.friendly_name || 'Meal plan')} calendar</span>` : '<b>Nothing planned</b>') +
-      `<div class="sheet-body">${today}<div class="panel"><h3>Coming up</h3><div class="hint">Same meals, different plates: equal protein, Ross gets about double the carbs.</div>
+      `<div class="sheet-body">${today}<div class="panel"><h3>Coming up</h3><div class="hint">Tap a day to swap it or have something else. Only that day changes.</div>
         <div class="agenda">${week || '<div class="dim">Nothing else planned this week.</div>'}</div></div></div>`;
   }
   _todoCard() {
@@ -1419,6 +1518,12 @@ class RossHome extends HTMLElement {
     const c = this._config, a = () => this._airInfo();
     switch (act) {
       case 'sheet': this._sheet = {kind: el.dataset.kind}; this._render(true); break;
+      case 'meal-pick': this._mealErr = ''; this._sheet = {kind: 'meals', pick: el.dataset.date}; this._render(true); break;
+      case 'meal-back': this._mealErr = ''; this._sheet = {kind: 'meals'}; this._render(true); break;
+      case 'meal-swap': this._changeMeal(el.dataset.date, 'swap', el.dataset.with); break;
+      case 'meal-set': this._changeMeal(el.dataset.date, 'meal', el.dataset.name); break;
+      case 'meal-nocook': this._changeMeal(el.dataset.date, 'nocook', el.dataset.name); break;
+      case 'meal-plan': this._changeMeal(el.dataset.date, 'plan'); break;
       case 'more': this.dispatchEvent(new CustomEvent('hass-more-info', {detail: {entityId: el.dataset.entity}, bubbles: true, composed: true})); break;
       case 'toggle': this._call('homeassistant', 'toggle', {entity_id: el.dataset.entity}); break;
       case 'theme': {
